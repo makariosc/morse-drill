@@ -499,10 +499,23 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
       try { ac = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' }); master = ac.createGain(); master.connect(ac.destination); }
       catch (e) { ac = null; return null; }
     }
-    if (ac.state === 'suspended') ac.resume();
+    // Safari reports 'interrupted' as well as 'suspended'; anything but 'running' needs a resume.
+    if (ac.state !== 'running') ac.resume().catch(() => {});
     master.gain.value = set.volume;
     return ac;
   }
+  // Resolves true once the audio clock is actually running (or false if the browser refuses without a click/keypress).
+  async function audioReady() {
+    const a = audio(); if (!a) return false;
+    if (a.state !== 'running') {
+      try { await Promise.race([a.resume(), new Promise(r => setTimeout(r, 400))]); } catch (e) {}
+    }
+    return a.state === 'running';
+  }
+  // iOS: play through the silent switch, like a media app.
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+  // Coming back to the tab: wake the audio up again.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && ac && ac.state !== 'running') ac.resume().catch(() => {}); });
   function tone(t, dur) {
     const o = ac.createOscillator(), g = ac.createGain();
     o.type = 'sine'; o.frequency.value = set.freq;
@@ -767,7 +780,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
       S.shownAt = Infinity;
       const what = S.sentence ? 'sentence' : S.numbers ? 'number' : 'word';
       setFeedback((fresh.length ? 'New: ' + fresh.map(c => '<b>' + c + '</b> ' + pillsText(MORSE[c])).join(', ') + '. Listen, then type the ' + what + '.' : 'Listen, then type the ' + what + '.') + note);
-      if (ac) setTimeout(() => { if (S.word === word) replay(); }, 150);
+      if (ac) replay();
       else setFeedback('Press <kbd>Space</kbd> or Play again to hear the word.');
     }
     render();
@@ -810,7 +823,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     render();
     // The finished word plays back while the next one is already up; keying cuts it off.
     if (set.mode === 'send' && set.sound && !S.sentence) playWord(S.word);
-    setTimeout(nextWord, S.sentence ? 600 : 250);
+    setTimeout(nextWord, S.sentence ? 600 : set.mode === 'recv' ? 400 : 250);
   }
 
   function setFeedback(html) { $('#feedback').innerHTML = html; }
@@ -895,8 +908,16 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   }
 
   // --- receive mode ---
-  function replay() {
+  async function replay() {
     if (set.mode !== 'recv' || !S.word) return;
+    const word = S.word;
+    if (!(await audioReady())) {
+      // The browser paused audio and won't restart it without a click or keypress.
+      if (S.phase === 'ask' && S.pos === 0) S.shownAt = Infinity;
+      setFeedback('Audio is paused by the browser. Press <kbd>Space</kbd> or Play again to hear the ' + (S.sentence ? 'sentence' : S.numbers ? 'number' : 'word') + '.');
+      return;
+    }
+    if (S.word !== word) return;
     const ms = playWord(S.word);
     if (S.phase === 'ask' && S.pos === 0 && (S.shownAt === Infinity || S.shownAt > Date.now())) S.shownAt = Date.now() + ms;
     if (!ms) setFeedback('Audio is unavailable in this browser.');
