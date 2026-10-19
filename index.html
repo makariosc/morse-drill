@@ -1,0 +1,1204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Learn Morse code with spaced repetition: words, numbers and sentences, sending and receiving.">
+<style>
+body { margin: 0; }
+[hidden] { display: none !important; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+</style>
+<title>Morse Drill</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one centred column. Drill card is the hero, keying pad under it, stats strip, then the letter board. */
+:root {
+  --bg: #e9edf2;
+  --surface: #f9fbfd;
+  --ink: #142030;
+  --muted: #586678;
+  --line: #d2d9e2;
+  --line-strong: #a9b4c2;
+  --lamp: #e0820a;
+  --lamp-off: #cfd6df;
+  --lamp-glow: rgba(224,130,10,.45);
+  --good: #23845a;
+  --bad: #c33d2c;
+  --press: #dfe5ec;
+  --f-display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+  --f-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d131b; --surface: #151e29; --ink: #e5eaf0; --muted: #8b98a8;
+    --line: #243140; --line-strong: #3b4b5e; --lamp: #ffaa2e; --lamp-off: #26323f;
+    --lamp-glow: rgba(255,170,46,.5); --good: #47c07f; --bad: #ff6b56; --press: #1d2835;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d131b; --surface: #151e29; --ink: #e5eaf0; --muted: #8b98a8;
+  --line: #243140; --line-strong: #3b4b5e; --lamp: #ffaa2e; --lamp-off: #26323f;
+  --lamp-glow: rgba(255,170,46,.5); --good: #47c07f; --bad: #ff6b56; --press: #1d2835;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 16px; line-height: 1.5; }
+.wrap { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: 16px 48px; display: flex; flex-direction: column; gap: 20px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+kbd { font-family: var(--f-mono); font-size: .78em; padding: 1px 6px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 5px; background: var(--surface); }
+
+/* Header */
+.top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.brand { font-family: var(--f-display); font-weight: 900; font-size: 1.9rem; letter-spacing: .02em; line-height: 1; display: flex; align-items: center; gap: 10px; margin-right: auto; text-transform: uppercase; }
+.lockcount { font-family: var(--f-mono); font-size: .72rem; font-weight: 400; margin-left: 6px; opacity: .8; }
+.brand-mark { display: inline-flex; gap: 4px; align-items: center; }
+.brand-mark i { display: block; height: 8px; background: var(--lamp); border-radius: 4px; }
+.modes { display: flex; border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px; background: var(--surface); }
+.modes button { border: 0; background: none; padding: 6px 16px; border-radius: 999px; font-weight: 700; color: var(--muted); }
+.modes button[aria-selected="true"] { background: var(--ink); color: var(--bg); }
+.ghost { border: 1px solid var(--line-strong); background: var(--surface); border-radius: 999px; padding: 6px 14px; font-weight: 700; }
+
+/* Settings */
+.settings { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px 24px; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field > span, .field legend { font-family: var(--f-mono); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.field fieldset { border: 0; padding: 0; margin: 0; display: flex; gap: 14px; flex-wrap: wrap; }
+.field output { font-family: var(--f-mono); font-variant-numeric: tabular-nums; color: var(--ink); text-transform: none; letter-spacing: 0; }
+.check { display: flex; align-items: center; gap: 8px; }
+input[type="range"] { width: 100%; accent-color: var(--lamp); }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
+.danger { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.danger button { border: 1px solid var(--bad); color: var(--bad); background: none; border-radius: 8px; padding: 6px 12px; font-weight: 700; }
+.danger button.solid { background: var(--bad); color: var(--surface); }
+
+/* Drill card */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px 20px 20px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.card.good { border-color: var(--good); }
+.card.bad { border-color: var(--bad); animation: shake .32s; }
+@keyframes shake { 0%,100% { transform: none } 25% { transform: translateX(-6px) } 75% { transform: translateX(6px) } }
+.meta { width: 100%; display: flex; justify-content: space-between; align-items: center; font-family: var(--f-mono); font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.glyph { font-family: var(--f-display); font-weight: 900; line-height: .95; letter-spacing: .01em; min-height: 1em; }
+.glyph { display: flex; justify-content: center; gap: .08em; font-size: min(9rem, calc((min(100vw, 760px) - 90px) / (var(--n, 3) * 0.62))); }
+.wl { position: relative; padding-bottom: .06em; }
+.wl.todo { color: var(--muted); opacity: .55; }
+.wl.done { color: var(--good); }
+.wl.cur::after { content: ""; position: absolute; left: 8%; right: 8%; bottom: 0; height: 6px; border-radius: 3px; background: var(--lamp); }
+.wl.blank { color: var(--line-strong); opacity: 1; }
+.glyph.sentence { font-size: clamp(2rem, 6.5vw, 3.2rem); flex-wrap: wrap; gap: .12em .45em; line-height: 1.15; max-width: 100%; }
+.glyph.sentence .wl.cur::after { height: max(3px, .07em); }
+.ww { display: inline-flex; gap: .04em; white-space: nowrap; }
+.feedback .inline-btn { margin-top: 8px; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 999px; padding: 6px 14px; font-weight: 700; color: var(--ink); }
+.pattern { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; }
+.el { display: block; height: 18px; border-radius: 9px; background: var(--lamp); }
+.el.dit { width: 18px; }
+.el.dah { width: 54px; }
+.el.ghost { background: transparent; box-shadow: inset 0 0 0 2px var(--line-strong); }
+.el.bad { background: var(--bad); }
+.placeholder { color: var(--muted); font-size: .95rem; }
+.feedback { margin: 0; min-height: 1.5em; text-align: center; color: var(--muted); max-width: 52ch; }
+.feedback b { color: var(--ink); }
+.feedback .ok { color: var(--good); font-weight: 700; }
+.feedback .no { color: var(--bad); font-weight: 700; }
+
+/* Pads */
+.pad { display: grid; gap: 12px; }
+.pad-two { grid-template-columns: 1fr 1fr; }
+.keybtn { min-height: 104px; border: 1px solid var(--line-strong); border-bottom-width: 4px; border-radius: 16px; background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+.keybtn.pressed { background: var(--press); transform: translateY(2px); border-bottom-width: 2px; }
+.keybtn .lbl { font-family: var(--f-mono); font-size: .8rem; color: var(--muted); }
+.straight { min-height: 140px; }
+.recv-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; }
+.replay { border: 1px solid var(--line-strong); border-bottom-width: 3px; background: var(--surface); border-radius: 12px; padding: 10px 18px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; }
+.letters { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 8px; }
+.letters button { min-height: 52px; border: 1px solid var(--line-strong); border-bottom-width: 3px; border-radius: 10px; background: var(--surface); font-family: var(--f-display); font-weight: 900; font-size: 1.6rem; touch-action: manipulation; }
+.letters button.pressed { background: var(--press); }
+.keyhelp { margin: 0; text-align: center; color: var(--muted); font-size: .9rem; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; }
+
+/* Stats */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.stat { padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stat + .stat { border-left: 1px solid var(--line); }
+.stat .k { font-family: var(--f-mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.stat .v { font-family: var(--f-display); font-weight: 700; font-size: 1.7rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) {
+  .stats { grid-template-columns: 1fr 1fr; }
+  .stat:nth-child(3) { border-left: 0; }
+  .stat:nth-child(n+3) { border-top: 1px solid var(--line); }
+}
+
+/* Board */
+.board-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.board-head h2 { font-family: var(--f-display); font-weight: 900; text-transform: uppercase; font-size: 1.5rem; margin: 0; margin-right: auto; letter-spacing: .02em; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: .82rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; margin-top: 12px; }
+.tile { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 8px 8px 9px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; text-align: left; position: relative; min-width: 0; }
+.tile .ch { font-family: var(--f-display); font-weight: 900; font-size: 1.6rem; line-height: 1; }
+.tile .mini { display: flex; gap: 3px; align-items: center; min-height: 6px; }
+.tile .mini i { display: block; height: 6px; border-radius: 3px; background: var(--muted); }
+.tile .mini i.d { width: 6px; } .tile .mini i.a { width: 16px; }
+.tile .bar { width: 100%; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.tile .bar b { display: block; height: 100%; background: var(--lamp); }
+.tile[data-state="new"] { opacity: .5; }
+.tile[data-state="new"] .ch { color: var(--muted); }
+.tile .due { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--lamp); }
+.st-learning { background: var(--lamp-off); box-shadow: inset 0 0 0 2px var(--lamp); }
+.st-new { background: var(--line); }
+.st-solid { background: var(--lamp); }
+
+.foot { color: var(--muted); font-size: .88rem; max-width: 68ch; margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .card.bad { animation: none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"><i style="width:8px"></i><i style="width:22px"></i></span>Morse Drill</div>
+    <div class="modes" role="tablist" aria-label="Practice mode">
+      <button id="mode-send" role="tab" aria-selected="true">Send</button>
+      <button id="mode-recv" role="tab" aria-selected="false">Receive</button>
+    </div>
+    <div class="modes" role="tablist" aria-label="Practice material">
+      <button id="pr-words" role="tab" aria-selected="true">Words</button>
+      <button id="pr-num" role="tab" aria-selected="false">Numbers</button>
+      <button id="pr-sent" role="tab" aria-selected="false">Sentences<span id="sent-lock" class="lockcount"></span></button>
+    </div>
+    <button id="settings-btn" class="ghost" aria-expanded="false" aria-controls="settings">Settings</button>
+  </header>
+
+  <section id="settings" class="settings" hidden aria-label="Settings">
+    <div class="field">
+      <span>Send with</span>
+      <fieldset>
+        <label class="check"><input type="radio" name="input" id="in-two" value="two"> Two keys</label>
+        <label class="check"><input type="radio" name="input" id="in-straight" value="straight"> Straight key</label>
+      </fieldset>
+    </div>
+    <label class="field" id="keywpm-field"><span>Straight key speed <output id="keywpm-out"></output></span>
+      <input type="range" id="keywpm" min="5" max="30" step="1"></label>
+    <label class="field"><span>Playback speed <output id="playwpm-out"></output></span>
+      <input type="range" id="playwpm" min="5" max="35" step="1"></label>
+    <label class="field"><span>Tone <output id="freq-out"></output></span>
+      <input type="range" id="freq" min="400" max="1000" step="10"></label>
+    <label class="field"><span>Volume <output id="vol-out"></output></span>
+      <input type="range" id="vol" min="0" max="1" step="0.05"></label>
+    <div class="field">
+      <span>Options</span>
+      <label class="check"><input type="checkbox" id="sound"> Play the letter after you key it</label>
+    </div>
+    <div class="field">
+      <span>Progress</span>
+      <div class="danger"><button id="reset">Reset progress</button><button id="reset-yes" class="solid" hidden>Yes, erase everything</button><button id="reset-no" hidden style="border-color:var(--line-strong);color:var(--ink)">Keep it</button></div>
+    </div>
+  </section>
+
+  <main class="pad" style="gap:14px">
+    <div class="card" id="card">
+      <div class="meta"><span id="card-state">New letter</span></div>
+      <div class="glyph" id="glyph">EAT</div>
+      <div class="pattern" id="pattern"></div>
+      <p class="feedback" id="feedback" aria-live="polite"></p>
+    </div>
+
+    <div class="pad pad-two" id="pad-two">
+      <button class="keybtn" id="btn-dit" aria-label="Dit"><span class="el dit"></span><span class="lbl">Dit · J</span></button>
+      <button class="keybtn" id="btn-dah" aria-label="Dah"><span class="el dah"></span><span class="lbl">Dah · K</span></button>
+    </div>
+    <div class="pad" id="pad-straight" hidden>
+      <button class="keybtn straight" id="btn-key" aria-label="Morse key: hold for dah, tap for dit"><span style="display:flex;gap:10px"><span class="el dit"></span><span class="el dah"></span></span><span class="lbl">Tap for dit, hold for dah · Space</span></button>
+    </div>
+    <div class="pad" id="pad-recv" hidden>
+      <div class="recv-row"><button class="replay" id="btn-replay"><span aria-hidden="true">▶</span> Play again</button></div>
+      <div class="letters" id="letters"></div>
+    </div>
+    <p class="keyhelp" id="keyhelp"></p>
+  </main>
+
+  <section class="stats" aria-label="Session stats">
+    <div class="stat"><span class="k">Streak</span><span class="v" id="s-streak">0</span></div>
+    <div class="stat"><span class="k">Today</span><span class="v" id="s-today">0</span></div>
+    <div class="stat"><span class="k">Learned</span><span class="v" id="s-learned">0</span></div>
+    <div class="stat"><span class="k">Due now</span><span class="v" id="s-due">0</span></div>
+  </section>
+
+  <section aria-label="Letter progress">
+    <div class="board-head">
+      <h2 id="board-title">Send progress</h2>
+      <div class="legend">
+        <span><i class="st-new"></i>Not yet</span>
+        <span><i class="st-learning"></i>Learning</span>
+        <span><i class="st-solid"></i>Long-term</span>
+      </div>
+      <button class="ghost" id="unlock-btn">Add next letter</button>
+      <button class="ghost" id="codes-btn" aria-pressed="false">Show codes</button>
+    </div>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <p class="foot">You start with E, A and T and build words from them. In Receive, a new character only unlocks once every unlocked one is solid: at least 85% right over its recent answers, with the last three right and quick. Numbers works the same way, starting with 5, 0 and 1. Once all 26 letters are unlocked, Sentences gives you everyday sentences, a few pangrams and some radio-contact phrases (plus sentences with numbers once all ten digits are unlocked), chosen to lean on the letters you find hardest. A new letter unlocks once the ones you are learning have settled. Each letter is scheduled on its own: it comes back after a gap that grows every time you get it right quickly, and shrinks to a few seconds when you miss it, so you spend your time on the letters you don't know yet. Timing follows the PARIS standard: a dit is one unit, a dah three, with one unit between elements. At 20 WPM a unit is 60 ms. Progress is saved in this browser.</p>
+</div>
+
+<script>
+(function () {
+  const MORSE = {A:'.-',B:'-...',C:'-.-.',D:'-..',E:'.',F:'..-.',G:'--.',H:'....',I:'..',J:'.---',K:'-.-',L:'.-..',M:'--',N:'-.',O:'---',P:'.--.',Q:'--.-',R:'.-.',S:'...',T:'-',U:'..-',V:'...-',W:'.--',X:'-..-',Y:'-.--',Z:'--..',
+    '1':'.----','2':'..---','3':'...--','4':'....-','5':'.....','6':'-....','7':'--...','8':'---..','9':'----.','0':'-----'};
+  const LETTERS = 'EATINOSHRDLUCMWFGYPBVKJXQZ'.split('');
+  const START = ['E', 'A', 'T'];
+  const WORDS = 'A AT AN AS AM AH BE BY DO GO HE HI IF IN IS IT ME MY NO OF OH OK ON OR SO TO UP US WE EAT TEA ATE TAT TEAT SEAT SAT SET SIT TIE TIN TEN NET NEST TEST TOAST TASTE STATE EAST NEAT SEA SEE SEEN TEE TENT ANT TAN THE AND FOR ARE BUT NOT YOU ALL ANY CAN HAD HER WAS ONE OUR OUT DAY GET HAS HIM HIS HOW MAN NEW NOW OLD TWO WAY WHO BOY DID ITS LET PUT SAY SHE TOO USE THAT WITH HAVE THIS WILL YOUR FROM THEY KNOW WANT BEEN GOOD MUCH SOME TIME VERY WHEN COME HERE JUST LIKE LONG MAKE MANY MORE ONLY OVER SUCH TAKE THAN THEM WELL WERE TOE TOT NUT NOR ROT RAT TAR ART EAR ERA ERR RED RID ROD NOD DOT DON DEN END ADD AID ADO DAD DIE DOE DUE DUN HEAT HATE HAT HIT HOT HEN SHOE HAM HUM HUE HUT SUN SON SIN SIR ION INN TINS TENS TEES TEEN TEASE STAIN SAINT SATIN STINT RAIN REIN RIDE RISE ROSE RATE RITE ROTE NOTE NOSE TONE TORE TEAR TIER TIDE TOAD ROAD READ DEAR DEER DEED REED NEED SEED SEND SAND HAND LAND LANE LINE LION LOAN LONE LOSE LOST LIST LINT TILT TILL TELL TALL TALE TEAL SEAL SALE SALT SLAT SLIT SLOT LOTS LETS LEAD DEAL DIAL DIRT DART DASH DISH FISH FIST GIFT LIFT LEFT FELT MELT MALT MAST MIST MUST MOST MOSS MESS LESS LOSS TOSS TOES DOES GOES HOSE HOST HINT HUNT HURT HURL HULL HALL HILL HOLE HOME HOPE ROPE RIPE PIPE WIPE WISE WIRE TIRE HIRE HERO SISTER LISTEN SILENT STOLEN STONE NOTES ONSET TENET SENSE TENSE RINSE RISEN SIREN RESIN ASIDE IDEAS IDEA AREA ARENA EATEN EASE ELSE REST BEST WEST VEST ZEST TREE FREE THREE THESE THOSE THERE THEIR OTHER AFTER LATER WATER OFTEN ENTER INTER OUTER OTTER UTTER UNDER ORDER OLDER ELDER ALTER SALAD SANDAL ATONE ALONE SHINE SHONE SHIN CHIN CHAT THEN THIN TINT TAINT TRAIN TRAIT TREAD TREAT TREND TEND RENT SENT DENT LENT WENT WONT DINNER INNER SINNER TENNIS TENANT ATTEND ATTAIN NATION RATION STATION SOONER NOON SOON MOON MOOD FOOD HOOD WOOD WOOL TOOL TOOLS STOOL SPOOL SPOON ANTS NETS TESTS TASTES STATES SEATS EATS TEAS TIES TINES TANS TOTE INTENT INTENSE TANNIN LOAD LORD WORD WARD WARM WORM WORK WORLD WOULD COULD SHOULD HELLO HELP HELD HOLD TOLD SOLD COLD BOLD FOLD GOLD MOLD ODD ADS NINE NONE NOISE POISE POINT PAINT PRINT SPRINT SPIRIT SAID SAIL TAIL RAIL NAIL MAIL MAIN PAIN GAIN VAIN LAIN DUNE TUNE TUNA TUBA TUBE CUBE CUTE MUTE MULE RULE RUSE MUSE FUSE FUME DUST RUST LUST GUST BUST JEST BEAT BEAN DEAN LEAN MEAN MEAT RUN FUN GUN BUN NUN PUN PEN MEN YEN CAT CAR CAP CAB CAD BAD BAT BIT BET BED BAG BIG BUG DUG HUG MUG RUG TUG DOG COT CUT RUT GUT FAN FAT FIT FIN FUR FAR FAD FED FEW DEW HEW COW ROW TOW SOW LOW BOW HID HOG HOP HIP TOP TIP TAP LAP LIP LID LAD MAD MAT MAP MOP CUP PUP PAN PAT PET PIT POT YES YET YAK YAM YARN YEAR YELL YELLOW QUIZ QUIT QUITE QUOTE QUEEN QUERY ZOO ZONE ZERO ZINC JAM JAR JET JOG JOY JOB JAB JOT JUG KIT KIN KID KEY KITE KIND KING KISS KNOT KNIT KNEE VAT VAN VET VOW VINE VOTE WAX WET WIT WIN WIG WAR WEB WED OX FOX BOX MIX SIX FIX TAX TIDAL TOTAL METAL PETAL PANEL TUNNEL FUNNEL SIDE WIDE HIDE AIDE BIDE RATED DATED MATED SATED HATED TINTED RENTED DENTED TENTED DENSE DENTS TENTS'.split(' ');
+  const SENTENCES = [
+    'THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG',
+    'PACK MY BOX WITH FIVE DOZEN LIQUOR JUGS',
+    'HOW VEXINGLY QUICK DAFT ZEBRAS JUMP',
+    'THE FIVE BOXING WIZARDS JUMP QUICKLY',
+    'SPHINX OF BLACK QUARTZ JUDGE MY VOW',
+    'JACKDAWS LOVE MY BIG SPHINX OF QUARTZ',
+    'A QUICK MOVEMENT OF THE ENEMY WILL JEOPARDIZE SIX GUNBOATS',
+    'I AM GOING HOME NOW',
+    'SEE YOU LATER',
+    'THE CAT SAT ON THE MAT',
+    'IT IS A NICE DAY',
+    'WHAT TIME IS IT',
+    'WHERE ARE YOU GOING',
+    'I LIKE TO READ BOOKS',
+    'THE SUN IS HOT TODAY',
+    'PLEASE CLOSE THE DOOR',
+    'THANK YOU VERY MUCH',
+    'WE NEED MORE MILK',
+    'THE DOG RAN TO THE PARK',
+    'SHE HAS A RED CAR',
+    'HE IS MY BEST FRIEND',
+    'CAN YOU HELP ME',
+    'THE BUS IS LATE AGAIN',
+    'I WILL CALL YOU TONIGHT',
+    'LET US EAT DINNER',
+    'THE RAIN STOPPED AT NOON',
+    'MY PHONE IS ON THE TABLE',
+    'THE BABY IS ASLEEP',
+    'WE WALKED ALONG THE BEACH',
+    'THE TEA IS TOO HOT',
+    'OPEN THE WINDOW PLEASE',
+    'THE KIDS PLAYED IN THE SNOW',
+    'I LOST MY KEYS',
+    'THE STORE OPENS AT NINE',
+    'HE DRINKS COFFEE EVERY MORNING',
+    'THE BIRDS SING AT DAWN',
+    'WE HAVE A TEST ON FRIDAY',
+    'SHE PLAYS THE PIANO WELL',
+    'THE TRAIN LEAVES AT SIX',
+    'I FORGOT MY JACKET',
+    'THE MOVIE WAS VERY GOOD',
+    'DO YOU WANT SOME TEA',
+    'THE RIVER IS DEEP AND COLD',
+    'I CAN HEAR THE OCEAN',
+    'TURN LEFT AT THE CORNER',
+    'THE BREAD IS FRESH',
+    'WE WON THE GAME',
+    'HE FIXED THE OLD BIKE',
+    'THE SKY IS CLEAR TONIGHT',
+    'MY SISTER LIVES IN TOWN',
+    'THE FOOD SMELLS GREAT',
+    'I NEED A NEW PEN',
+    'THE BOOK IS ON THE SHELF',
+    'SHE WROTE A LONG LETTER',
+    'THE WIND IS STRONG TODAY',
+    'WE MET AT THE CAFE',
+    'THE QUIZ WAS EASY',
+    'HE JUMPED OVER THE FENCE',
+    'THE ZOO OPENS IN JUNE',
+    'I SAW SIX RED FOXES',
+    'THE JAR IS FULL OF JAM',
+    'VISIT US NEXT WEEK',
+    'THE QUEEN WAVED TO THE CROWD',
+    'WE ATE PIZZA FOR LUNCH',
+    'KEEP YOUR VOICE DOWN',
+    'THE BOX IS VERY HEAVY',
+    'JUST DO YOUR BEST',
+    'THE EXAM STARTS AT TEN',
+    'HE PLAYS JAZZ ON FRIDAYS',
+    'THE VAN IS PARKED OUTSIDE',
+    'WE KNOW THE WAY',
+    'THE KING HAD A GOLD CROWN',
+    'FIX THE BROKEN WINDOW',
+    'A QUIET ROOM HELPS ME THINK',
+    'THE OX PULLED THE CART',
+    'ZIP UP YOUR COAT',
+    'THE GARDEN NEEDS WATER',
+    'MY FEET ARE COLD',
+    'SHE BAKED A LEMON CAKE',
+    'WE TOOK THE LATE TRAIN',
+    'THE CLOCK IS FAST',
+    'HE SOLD HIS OLD TRUCK',
+    'I WANT TO LEARN MORSE CODE',
+    'PRACTICE A LITTLE EVERY DAY',
+    'THE STARS ARE BRIGHT',
+    'WE SAT BY THE FIRE',
+    'THE MAIL CAME EARLY',
+    'SHE SMILED AT ME',
+    'THE HILL IS VERY STEEP',
+    'HE READ THE NEWS',
+    'THE LAKE IS CALM',
+    'I HAVE TWO BROTHERS',
+    'OUR TEAM PLAYS AT HOME',
+    'THE APPLE IS RED',
+    'SHE DRANK SOME WATER',
+    'WE HEARD A LOUD NOISE',
+    'THE SHOP IS CLOSED ON SUNDAY',
+    'TAKE YOUR TIME',
+    'THE ROAD IS WET',
+    'I LIKE HOT SOUP',
+    'THE BELL RANG TWICE',
+    'HE LOST HIS HAT',
+    'THE GLASS IS EMPTY',
+    'WE PAINTED THE FENCE BLUE',
+    'THE PLANE LANDED SAFELY',
+    'SHE FOUND A GOLD RING',
+    'THE FISH SWIM FAST',
+    'I WILL BE THERE SOON',
+    'THE DOOR IS LOCKED',
+    'WE GROW OUR OWN BEANS',
+    'HE RUNS EVERY MORNING',
+    'THE MOON IS FULL TONIGHT',
+    'SHE LIKES TO DANCE',
+    'THE COFFEE IS COLD',
+    'MY DOG LOVES TO SWIM',
+    'THE FARM HAS TEN COWS',
+    'WE SANG A SONG',
+    'THE LAMP IS BROKEN',
+    'HE WEARS A BLACK COAT',
+    'THE NIGHT WAS QUIET',
+    'I MADE A CUP OF TEA',
+    'SHE OWNS A SMALL BOAT',
+    'THE ICE IS THIN',
+    'WE CAMPED BY THE LAKE',
+    'THE CHILD DREW A HORSE',
+    'HE WAITED FOR AN HOUR',
+    'THE PARTY STARTS AT EIGHT',
+    'I CANNOT FIND MY SHOES',
+    'THE WAVES ARE BIG TODAY',
+    'SHE ASKED A GOOD QUESTION',
+    'THE SOUP NEEDS SALT',
+    'WE MOVED TO A NEW HOUSE',
+    'THE FROG JUMPED INTO THE POND',
+    'HE KNOWS THE ANSWER',
+    'THE MAP IS ON THE WALL',
+    'I LOVE THE SMELL OF RAIN',
+    'SHE JOGS IN THE PARK',
+    'THE TREE LOST ITS LEAVES',
+    'WE SHARED A PIZZA',
+    'THE PENCIL IS SHARP',
+    'HE GAVE ME A GIFT',
+    'THE BRIDGE IS LONG',
+    'I WOKE UP EARLY',
+    'THE OVEN IS HOT',
+    'SHE CAUGHT THE BALL',
+    'THE FOX HID IN THE WOODS',
+    'WE ZOOMED DOWN THE HILL',
+    'THE JUDGE WAS FAIR',
+    'HE QUICKLY FIXED THE TAP',
+    'THE ZEBRA HAS STRIPES',
+    'JOIN US FOR LUNCH',
+    'THE QUILT IS WARM',
+    'SIX BOXES WERE LEFT',
+    'WHAT IS YOUR NAME',
+    'MY NAME IS SAM',
+    'WHERE DO YOU LIVE',
+    'I LIVE NEAR THE COAST',
+    'THE WEATHER HERE IS COLD',
+    'YOUR SIGNAL IS STRONG',
+    'THANKS FOR THE CALL',
+    'HOPE TO HEAR YOU AGAIN',
+    'GOOD MORNING',
+    'GOOD NIGHT AND BEST WISHES',
+    'THE ANTENNA IS ON THE ROOF',
+    'I AM USING A SMALL RADIO',
+    'PLEASE SEND MORE SLOWLY',
+    'PLEASE REPEAT YOUR NAME',
+    'MY POWER IS FIVE WATTS',
+    'NICE TO MEET YOU',
+    'HOW ARE YOU TODAY',
+    'I AM FINE THANKS',
+    'HAVE A GOOD WEEKEND',
+    'SEE YOU TOMORROW',
+    'IT IS TIME TO GO',
+    'THE WATER IS VERY CLEAR',
+    'WE FED THE DUCKS',
+    'SHE KEPT A DIARY',
+    'HE BUILT A WOODEN BOX',
+    'THE TOWN IS SMALL AND QUIET',
+    'I JUST GOT YOUR MESSAGE',
+    'THE PARK IS NEAR MY HOUSE',
+    'WE PLAYED CARDS ALL NIGHT',
+    'THE CAKE WAS DELICIOUS'
+  ];
+  const DIGITS = '5019283746'.split('');      // learning order: all dits, all dahs, then mirrored pairs
+  const DIGITS_SHOWN = '1234567890'.split(''); // board order
+  const NUM_START = ['5', '0', '1'];
+  // Numbers people actually send: signal reports, sign-offs, years, times, counts.
+  const REAL_NUMBERS = '73 88 599 579 559 1030 0730 1145 2026 2024 1999 2000 1984 1945 911 100 250 500 365 24 60 12 30 45 90 404 1234 5150 8080 14 21 40 75 18 600 1500 2100 0900 1200'.split(' ');
+  const NUM_SENTENCES = [
+    'I HAVE 2 CATS', 'THE TRAIN LEAVES AT 6', 'WE NEED 3 EGGS', 'MY ROOM IS NUMBER 12', 'THE SHOP OPENS AT 9',
+    'SHE IS 7 YEARS OLD', 'THE GAME ENDS AT 10', 'I WALKED 5 MILES', 'THERE ARE 4 SEASONS', 'HE WAS BORN IN 1990',
+    'WE MET IN 2015', 'THE BUS COMES EVERY 20 MINUTES', 'A WEEK HAS 7 DAYS', 'A YEAR HAS 365 DAYS', 'YOUR REPORT IS 599',
+    'BEST WISHES 73', 'MY POWER IS 5 WATTS', 'CALL ME AT 8', 'THE TICKET COSTS 40 DOLLARS', 'I SLEPT FOR 6 HOURS',
+    'THE PARTY IS ON JUNE 18', 'WE HAVE 100 CHAIRS', 'THE MEETING IS AT 1030', 'ROOM 204 IS ON THE LEFT', 'THE BOX WEIGHS 9 POUNDS',
+    'THERE ARE 12 EGGS IN A DOZEN', 'THE FLIGHT LEAVES AT 1145', 'I READ 50 PAGES TODAY', 'THE SPEED LIMIT IS 30', 'MY ANTENNA IS 8 METERS HIGH'
+  ];
+  const STORE = 'morse-drill-v2';
+  const LEARN_S = 120;        // a card counts as "learning" until its gap reaches 2 minutes
+  const SETTLE_STREAK = 2;    // ...or until it is answered correctly this many times in a row without a hint
+  const MAX_LEARNING = 3;
+  // Receive mode is stricter: every unlocked character must be "grasped" before a new one appears.
+  const GRASP_MIN = 5, GRASP_ACC = 0.85, GRASP_LAST = 3;     // at most this many learning cards before a new letter appears
+  const SOLID_S = 86400;      // a day or more counts as long-term
+  const MAX_S = 60 * 86400;
+  const DEFAULTS = { mode: 'send', input: 'two', keyWpm: 12, playWpm: 20, freq: 620, volume: 0.5, sound: true, showCodes: false, practice: 'words' };
+
+  const $ = s => document.querySelector(s);
+
+  // ---------- storage ----------
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORE);
+      if (raw) {
+        const d = JSON.parse(raw);
+        return { settings: Object.assign({}, DEFAULTS, d.settings), decks: { send: (d.decks && d.decks.send) || {}, recv: (d.decks && d.decks.recv) || {} }, stats: d.stats || {} };
+      }
+    } catch (e) {}
+    return { settings: Object.assign({}, DEFAULTS), decks: { send: {}, recv: {} }, stats: {} };
+  }
+  let DB = load();
+  const set = DB.settings;
+  function save() { try { localStorage.setItem(STORE, JSON.stringify(DB)); } catch (e) {} }
+
+  const pool = () => set.practice === 'numbers' ? DIGITS : LETTERS;
+  const deck = () => DB.decks[set.mode];
+  const todayKey = () => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
+  function dayStats() {
+    if (DB.stats.day !== todayKey()) { DB.stats.day = todayKey(); DB.stats.reviews = 0; DB.stats.correct = 0; }
+    return DB.stats;
+  }
+  const unitMs = wpm => 1200 / wpm;
+
+  // ---------- session state ----------
+  const S = { numbers: false, word: '', pos: 0, graded: new Set(), recent: [], recentSent: [], sentence: false, group: false, current: null, input: '', phase: 'ask', hintShown: false, usedHint: false, shownAt: 0, lock: false, last: null, streak: 0, pressing: 0, hintTimer: 0, revealed: false, badIdx: -1 };
+
+  // ---------- audio ----------
+  let ac = null, master = null, sidetone = null, scheduled = [];
+  function audio() {
+    if (!ac) {
+      try { ac = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' }); master = ac.createGain(); master.connect(ac.destination); }
+      catch (e) { ac = null; return null; }
+    }
+    if (ac.state === 'suspended') ac.resume();
+    master.gain.value = set.volume;
+    return ac;
+  }
+  function tone(t, dur) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.value = set.freq;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.8, t + 0.005);
+    g.gain.setValueAtTime(0.8, t + dur - 0.005);
+    g.gain.linearRampToValueAtTime(0, t + dur);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t + dur + 0.02);
+    return o;
+  }
+  function stopPlayback() {
+    scheduled.forEach(o => { try { o.stop(); } catch (e) {} });
+    scheduled = [];
+  }
+  // Plays a pattern; returns its length in ms (0 if audio unavailable).
+  function playPattern(pattern) {
+    stopPlayback();
+    const a = audio();
+    const u = 1.2 / set.playWpm;
+    let off = 0.06, total = 0;
+    for (const ch of pattern) {
+      const dur = ch === '.' ? u : 3 * u;
+      if (a) scheduled.push(tone(a.currentTime + off, dur));
+      off += dur + u;
+    }
+    total = off * 1000;
+    return a ? total : 0;
+  }
+  // Plays a whole word: three units between letters, at the playback speed.
+  function playWord(word) {
+    stopPlayback();
+    const a = audio();
+    const u = 1.2 / set.playWpm;
+    let off = 0.06;
+    for (const c of word) {
+      if (c === ' ') { off += 4 * u; continue; }  // 3 after the letter + 4 = 7-unit word gap
+      for (const ch of MORSE[c]) {
+        const dur = ch === '.' ? u : 3 * u;
+        if (a) scheduled.push(tone(a.currentTime + off, dur));
+        off += dur + u;
+      }
+      off += 2 * u;
+    }
+    return a ? off * 1000 : 0;
+  }
+  // Keying uses one oscillator that runs all the time; a key press only opens its gain.
+  // No nodes are created per press, so the tone starts on the next audio block.
+  let keyOsc = null, keyGain = null;
+  function keyVoice() {
+    const a = audio(); if (!a) return null;
+    if (!keyOsc) {
+      keyOsc = a.createOscillator(); keyGain = a.createGain();
+      keyGain.gain.value = 0;
+      keyOsc.connect(keyGain); keyGain.connect(master);
+      keyOsc.start();
+    }
+    keyOsc.frequency.value = set.freq;
+    return a;
+  }
+  function keyRamp(to, t, len) {
+    const g = keyGain.gain;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(to, t + len);
+  }
+  function blip(el) {
+    if (scheduled.length) stopPlayback();
+    const u = unitMs(set.playWpm) / 1000;
+    const dur = el === '.' ? u : 3 * u;
+    const a = keyVoice();
+    if (a) {
+      const t = a.currentTime;
+      keyRamp(0.8, t, 0.003);
+      keyGain.gain.setValueAtTime(0.8, t + dur - 0.004);
+      keyGain.gain.linearRampToValueAtTime(0, t + dur);
+    }
+  }
+  function sidetoneOn() {
+    if (scheduled.length) stopPlayback();
+    const a = keyVoice(); if (!a) return;
+    keyRamp(0.8, a.currentTime, 0.003);
+    sidetone = true;
+  }
+  function sidetoneOff() {
+    if (!sidetone || !ac) return;
+    keyRamp(0, ac.currentTime, 0.005);
+    sidetone = null;
+  }
+  // Warm the audio path on the first interaction so the first real press isn't the one paying for setup.
+  function warmAudio() { keyVoice(); }
+  document.addEventListener('pointerdown', warmAudio, { capture: true, once: true });
+  document.addEventListener('keydown', warmAudio, { capture: true, once: true });
+
+  // ---------- scheduler ----------
+  // Recent answers score 1 (good or fast), 0.5 (slow) or 0 (miss); the last 8 are kept.
+  function grasped(c) {
+    const h = (deck()[c] && deck()[c].hist) || [];
+    if (h.length < GRASP_MIN) return false;
+    const acc = h.reduce((a, b) => a + b, 0) / h.length;
+    return acc >= GRASP_ACC && h.slice(-GRASP_LAST).every(x => x === 1);
+  }
+  function newCard() { return { interval: 0, due: Date.now(), reps: 0, lapses: 0, last: 0 }; }
+  function pickNext() {
+    const now = Date.now(), d = deck(), p = pool();
+    const intro = p.filter(c => d[c]);
+    const due = intro.filter(c => d[c].due <= now).sort((a, b) => d[a].due - d[b].due);
+    const notLast = arr => arr.filter(c => c !== S.last);
+    if (S.forceNew && d[S.forceNew]) { const f = S.forceNew; S.forceNew = null; return f; }
+    const firstDue = notLast(due)[0];
+    if (firstDue) return firstDue;
+    const learning = intro.filter(c => d[c].interval < LEARN_S && (d[c].streak || 0) < SETTLE_STREAK).length;
+    const next = p.find(c => !d[c]);
+    const ready = set.mode === 'recv' ? intro.every(grasped) : learning < MAX_LEARNING;
+    if (next && ready) { d[next] = newCard(); return next; }
+    if (due[0] && intro.length === 1) return due[0];
+    const soon = notLast(intro).sort((a, b) => d[a].due - d[b].due);
+    if (soon[0]) return soon[0];
+    if (intro[0]) return intro[0];
+    if (next) { d[next] = newCard(); return next; }
+    return p[0];
+  }
+  // q: 0 miss, 1 hard (slow or hinted), 2 good, 3 fast
+  function grade(ch, q) {
+    const card = deck()[ch], now = Date.now(), st = dayStats();
+    st.reviews++;
+    if (q === 0) {
+      card.lapses++;
+      card.streak = 0;
+      card.interval = Math.max(8, Math.round(card.interval * 0.15));
+      S.streak = 0;
+    } else {
+      st.correct++;
+      if (q >= 2) card.streak = (card.streak || 0) + 1;
+      S.streak++;
+      DB.stats.best = Math.max(DB.stats.best || 0, S.streak);
+      if (card.reps === 0 || card.interval < 1) card.interval = 15;
+      else {
+        const mult = [0, 1.3, 2.0, 2.8][q];
+        // Reviewing before the due time only earns part of the growth.
+        const frac = Math.min(1, Math.max(0.1, (now - card.last) / (card.interval * 1000)));
+        card.interval = Math.min(MAX_S, card.interval * (1 + (mult - 1) * frac));
+      }
+    }
+    card.hist = (card.hist || []).concat(q >= 2 ? 1 : q === 1 ? 0.5 : 0).slice(-8);
+    card.reps++;
+    card.last = now;
+    card.due = now + card.interval * 1000;
+    save();
+  }
+
+  // ---------- word choice ----------
+  // Picks a word that contains the letter most in need of practice and uses only unlocked letters.
+  function pickWord() {
+    const d = deck(), now = Date.now();
+    if (!LETTERS.some(c => d[c])) START.forEach(c => { d[c] = newCard(); });
+    const target = pickNext();
+    const known = new Set(pool().filter(c => d[c]));
+    const isDue = c => d[c] && d[c].reps > 0 && d[c].due <= now;
+    const maxLen = known.size < 8 ? 5 : 7;
+    const cands = WORDS.filter(w => w.length <= maxLen && w.includes(target) && !S.recent.includes(w) && [...w].every(c => known.has(c)));
+    if (cands.length) {
+      const scored = cands.map(w => {
+        const distinct = new Set(w);
+        let score = Math.random() * 1.5 + (w.length >= 3 ? 1 : 0);
+        distinct.forEach(c => { if (c !== target && isDue(c)) score += 2; if (d[c].reps === 0 && c !== target) score -= 3; });
+        return { w, score };
+      }).sort((a, b) => b.score - a.score);
+      const pick = scored[Math.floor(Math.random() * Math.min(4, scored.length))].w;
+      S.recent = [pick].concat(S.recent).slice(0, 12);
+      return { word: pick, group: false };
+    }
+    // No real word fits yet: fall back to a short letter group.
+    const others = [...known].filter(c => c !== target).sort((a, b) => (isDue(b) - isDue(a)) || (Math.random() - .5)).slice(0, 2);
+    const group = [target].concat(others).sort(() => Math.random() - .5).join('');
+    return { word: group, group: true };
+  }
+
+  // ---------- number choice ----------
+  // A real-world number when one fits the unlocked digits, otherwise a 3-5 digit group built around the target digit.
+  function pickNumber() {
+    const d = deck(), now = Date.now();
+    if (!DIGITS.some(c => d[c])) NUM_START.forEach(c => { d[c] = newCard(); });
+    const target = pickNext();
+    const known = DIGITS.filter(c => d[c]);
+    const isDue = c => d[c].reps > 0 && d[c].due <= now;
+    const real = REAL_NUMBERS.filter(n => n.includes(target) && [...n].every(c => d[c]) && !S.recent.includes(n));
+    let out;
+    if (real.length && Math.random() < 0.4) out = real[Math.floor(Math.random() * real.length)];
+    else {
+      const len = known.length < 5 ? 3 : 3 + Math.floor(Math.random() * 3);
+      const at = Math.floor(Math.random() * len);
+      const bag = known.flatMap(c => c !== target && isDue(c) ? [c, c, c] : [c]);
+      out = '';
+      for (let i = 0; i < len; i++) {
+        if (i === at) { out += target; continue; }
+        let c, tries = 0;
+        do { c = bag[Math.floor(Math.random() * bag.length)]; } while (out.endsWith(c + c) && ++tries < 10);
+        out += c;
+      }
+    }
+    S.recent = [out].concat(S.recent).slice(0, 12);
+    return { word: out, numbers: true };
+  }
+
+  // ---------- sentence choice ----------
+  const unlockedCount = () => LETTERS.filter(c => deck()[c]).length;
+  const sentencesReady = () => unlockedCount() === LETTERS.length;
+  // Favours sentences full of letters that are due, still being learned, or often missed.
+  function pickSentence() {
+    const d = deck(), now = Date.now();
+    const weight = c => {
+      const k = d[c];
+      if (!k || k.reps === 0) return 1;
+      let w = 0;
+      if (k.due <= now) w += 2;
+      if (k.interval < LEARN_S) w += 1;
+      return w + Math.min(2, k.lapses * 0.3);
+    };
+    const pool = DIGITS.every(c => d[c]) ? SENTENCES.concat(NUM_SENTENCES) : SENTENCES;
+    const scored = pool.filter(x => !S.recentSent.includes(x)).map(x => {
+      let score = Math.random() * 3 - x.length / 40;
+      new Set(x.replace(/ /g, '')).forEach(c => { score += weight(c); });
+      return { x, score };
+    }).sort((a, b) => b.score - a.score);
+    const pick = scored[Math.floor(Math.random() * Math.min(5, scored.length))].x;
+    S.recentSent = [pick].concat(S.recentSent).slice(0, 40);
+    for (const c of pick) if (c !== ' ' && !d[c]) d[c] = newCard();
+    return { word: pick, group: false, sentence: true };
+  }
+  function unlockAll() {
+    const d = deck();
+    LETTERS.forEach(c => { if (!d[c]) d[c] = newCard(); });
+    save();
+  }
+
+  // ---------- flow ----------
+  function clearHintTimer() { clearTimeout(S.hintTimer); S.hintTimer = 0; }
+  function armHintTimer() {
+    clearHintTimer();
+    if (set.mode !== 'send' || S.phase !== 'ask' || S.hintShown) return;
+    const ch = S.current, pos = S.pos;
+    S.hintTimer = setTimeout(() => { if (S.current === ch && S.pos === pos && S.phase === 'ask' && !S.hintShown) showHint(true); }, 6000);
+  }
+
+  function nextWord() {
+    clearHintTimer();
+    $('#card').classList.remove('good', 'bad');
+    let note = '';
+    if (set.practice === 'sentences' && !sentencesReady()) {
+      set.practice = 'words'; save();
+      note = ' Sentences open once all 26 letters are unlocked in ' + (set.mode === 'send' ? 'Send' : 'Receive') + '.';
+    }
+    const { word, group, sentence, numbers } = set.practice === 'sentences' ? pickSentence() : set.practice === 'numbers' ? pickNumber() : pickWord();
+    S.word = word; S.group = group; S.sentence = !!sentence; S.numbers = !!numbers; S.pos = 0; S.graded = new Set();
+    S.lock = false;
+    startLetter();
+    const fresh = [...new Set(word.replace(/ /g, ''))].filter(c => deck()[c].reps === 0);
+    if (set.mode === 'send') {
+      setFeedback((fresh.length ? 'New: ' + fresh.map(c => '<b>' + c + '</b> ' + pillsText(MORSE[c])).join(', ') + '. Follow the outline.' : '') + note);
+    } else {
+      S.shownAt = Infinity;
+      const what = S.sentence ? 'sentence' : S.numbers ? 'number' : 'word';
+      setFeedback((fresh.length ? 'New: ' + fresh.map(c => '<b>' + c + '</b> ' + pillsText(MORSE[c])).join(', ') + '. Listen, then type the ' + what + '.' : 'Listen, then type the ' + what + '.') + note);
+      if (ac) setTimeout(() => { if (S.word === word) replay(); }, 150);
+      else setFeedback('Press <kbd>Space</kbd> or Play again to hear the word.');
+    }
+    render();
+  }
+
+  function startLetter() {
+    S.current = S.word[S.pos];
+    S.last = S.current;
+    S.input = ''; S.badIdx = -1;
+    S.phase = 'ask';
+    const c = deck()[S.current];
+    S.hintShown = c.reps === 0;
+    S.usedHint = false;
+    S.revealed = c.reps === 0;
+    if (set.mode === 'send') { S.shownAt = Date.now(); armHintTimer(); }
+    else if (S.pos > 0) S.shownAt = Math.max(S.shownAt, Date.now());
+  }
+
+  // Grades a letter the first time it is answered within the word; repeats in the same word don't count twice.
+  function gradeOnce(ch, q) {
+    if (S.graded.has(ch)) return;
+    S.graded.add(ch);
+    grade(ch, q);
+  }
+
+  function letterDone() {
+    S.pos++;
+    while (S.word[S.pos] === ' ') S.pos++;  // spaces are gaps, not something to key
+    if (S.pos < S.word.length) {
+      startLetter();
+      render();
+      return;
+    }
+    // whole word finished
+    clearHintTimer();
+    S.lock = true;
+    S.revealed = true;
+    if (S.sentence) setFeedback('<span class="ok">Sentence complete.</span>');
+    else setFeedback('<span class="ok">' + S.word + '</span> ' + S.word.split('').map(c => pillsText(MORSE[c])).join(' &nbsp;/&nbsp; '));
+    render();
+    // The finished word plays back while the next one is already up; keying cuts it off.
+    if (set.mode === 'send' && set.sound && !S.sentence) playWord(S.word);
+    setTimeout(nextWord, S.sentence ? 600 : 250);
+  }
+
+  function setFeedback(html) { $('#feedback').innerHTML = html; }
+  function pillsText(p) { return p.split('').map(x => x === '.' ? '·' : '−').join(' '); }
+
+  function flash(cls) {
+    const card = $('#card');
+    card.classList.remove('good', 'bad');
+    void card.offsetWidth;
+    card.classList.add(cls);
+  }
+
+  // --- send mode ---
+  function addElement(el, fromStraight) {
+    if (set.mode !== 'send' || S.lock || !S.current) return;
+    if (!fromStraight) blip(el);
+    S.input += el;
+    const target = MORSE[S.current];
+    if (!target.startsWith(S.input)) return onSendWrong();
+    if (S.input === target) return onSendRight();
+    armHintTimer();
+    renderPattern();
+  }
+  function onSendRight() {
+    clearHintTimer();
+    const ch = S.current, target = MORSE[ch];
+    if (S.phase === 'ask') {
+      const elapsed = Date.now() - S.shownAt;
+      const fast = 1100 + 350 * target.length;
+      let q = elapsed < fast ? 3 : elapsed < fast * 2.5 ? 2 : 1;
+      if (S.usedHint) q = 1;
+      gradeOnce(ch, q);
+    }
+    $('#card').classList.remove('bad');
+    if (S.pos < S.word.length - 1 && !/New:/.test($('#feedback').innerHTML)) setFeedback('');
+    // move straight on, so fast keying never loses an element
+    letterDone();
+  }
+  function onSendWrong() {
+    clearHintTimer();
+    const ch = S.current, target = MORSE[ch], pos = S.pos;
+    if (S.phase === 'ask') { gradeOnce(ch, 0); S.phase = 'retry'; }
+    S.hintShown = true;
+    S.badIdx = S.input.length - 1;
+    flash('bad');
+    setFeedback('<span class="no">Not quite.</span> ' + ch + ' is <b>' + pillsText(target) + '</b>. Key it again.');
+    S.lock = true;
+    render();
+    setTimeout(() => {
+      if (S.current !== ch || S.pos !== pos) return;
+      S.input = ''; S.badIdx = -1; S.lock = false;
+      renderPattern();
+    }, 650);
+  }
+  function backspace() {
+    if (set.mode !== 'send' || S.lock || !S.input) return;
+    S.input = S.input.slice(0, -1);
+    renderPattern();
+  }
+  function showHint(auto) {
+    if (set.mode !== 'send' || S.phase !== 'ask' || S.hintShown) return;
+    S.hintShown = true; S.usedHint = true;
+    setFeedback((auto ? 'Here is ' : 'Hint: ') + S.current + '. It will come back sooner.');
+    renderPattern();
+  }
+
+  // straight key
+  function keyDown() {
+    if (set.mode !== 'send' || set.input !== 'straight' || S.lock || S.pressing) return;
+    S.pressing = performance.now();
+    sidetoneOn();
+    $('#btn-key').classList.add('pressed');
+  }
+  function keyUp() {
+    if (!S.pressing) return;
+    const dur = performance.now() - S.pressing;
+    S.pressing = 0;
+    sidetoneOff();
+   
+    $('#btn-key').classList.remove('pressed');
+    addElement(dur < 2 * unitMs(set.keyWpm) ? '.' : '-', true);
+  }
+
+  // --- receive mode ---
+  function replay() {
+    if (set.mode !== 'recv' || !S.word) return;
+    const ms = playWord(S.word);
+    if (S.phase === 'ask' && S.pos === 0 && (S.shownAt === Infinity || S.shownAt > Date.now())) S.shownAt = Date.now() + ms;
+    if (!ms) setFeedback('Audio is unavailable in this browser.');
+    else if (/Press/.test($('#feedback').innerHTML)) setFeedback('Listen, then type the word.');
+  }
+  function answer(ch) {
+    if (set.mode !== 'recv' || S.lock || !S.current) return;
+    if (S.shownAt === Infinity) { replay(); return; }
+    const target = S.current;
+    if (ch === target) {
+      if (S.phase === 'ask') {
+        const t = Date.now() - S.shownAt;
+        gradeOnce(target, t < 1500 ? 3 : t < 3500 ? 2 : 1);
+      }
+      $('#card').classList.remove('bad');
+      if (S.phase === 'retry') setFeedback('');
+      S.shownAt = Date.now();
+      letterDone();
+    } else {
+      if (S.phase === 'ask') { gradeOnce(target, 0); S.phase = 'retry'; }
+      S.revealed = true;
+      flash('bad');
+      const theirs = MORSE[ch] ? ' You typed ' + ch + ' (' + pillsText(MORSE[ch]) + ').' : '';
+      setFeedback('<span class="no">That was ' + target + '</span> (' + pillsText(MORSE[target]) + ').' + theirs + ' Type ' + target + ' to continue.');
+      render();
+      playPattern(MORSE[target]);
+    }
+  }
+
+  // ---------- rendering ----------
+  function renderPattern() {
+    const box = $('#pattern'), target = MORSE[S.current] || '';
+    let h = '';
+    if (set.mode === 'send') {
+      const n = S.hintShown ? Math.max(target.length, S.input.length) : S.input.length;
+      for (let i = 0; i < n; i++) {
+        const typed = S.input[i];
+        const sym = typed || target[i];
+        const cls = ['el', sym === '.' ? 'dit' : 'dah'];
+        if (!typed) cls.push('ghost');
+        else if (i === S.badIdx) cls.push('bad');
+        h += '<span class="' + cls.join(' ') + '"></span>';
+      }
+      if (!n) h = '<span class="placeholder">Key ' + S.current + '</span>';
+    } else {
+      if (S.revealed) for (const sym of target) h += '<span class="el ' + (sym === '.' ? 'dit' : 'dah') + '"></span>';
+      else h = '<span class="placeholder">Listen</span>';
+    }
+    box.innerHTML = h;
+    box.setAttribute('aria-label', set.mode === 'send' ? 'Keyed: ' + (S.input ? pillsText(S.input) : 'nothing yet') : '');
+  }
+
+  function render() {
+    const c = deck()[S.current];
+    // mode tabs
+    $('#mode-send').setAttribute('aria-selected', set.mode === 'send');
+    $('#mode-recv').setAttribute('aria-selected', set.mode === 'recv');
+    $('#pad-two').hidden = !(set.mode === 'send' && set.input === 'two');
+    $('#pad-straight').hidden = !(set.mode === 'send' && set.input === 'straight');
+    $('#pad-recv').hidden = set.mode !== 'recv';
+    $('#board-title').textContent = set.mode === 'send' ? 'Send progress' : 'Receive progress';
+
+    // card
+    const glyph = $('#glyph');
+    const done = S.pos >= S.word.length;
+    glyph.style.setProperty('--n', Math.max(3, S.word.length));
+    glyph.classList.toggle('sentence', S.sentence);
+    const letterHtml = (ch, i) => {
+      const cls = i < S.pos ? 'done' : i === S.pos ? 'cur' : 'todo';
+      const show = set.mode === 'send' || i < S.pos || done || (i === S.pos && S.revealed);
+      return '<span class="wl ' + cls + (show ? '' : ' blank') + '">' + (show ? ch : '?') + '</span>';
+    };
+    if (S.sentence) {
+      let i = 0;
+      glyph.innerHTML = S.word.split(' ').map(w => {
+        const h = '<span class="ww">' + w.split('').map(ch => letterHtml(ch, i++)).join('') + '</span>';
+        i++;  // the space
+        return h;
+      }).join('');
+    } else glyph.innerHTML = S.word.split('').map(letterHtml).join('');
+    glyph.setAttribute('aria-label', set.mode === 'send' ? 'Word ' + S.word + ', key letter ' + (S.pos + 1) + ', ' + S.current : 'Letter ' + (S.pos + 1) + ' of ' + S.word.length);
+    let state = '';
+    if (c && !done) {
+      if (S.sentence) {
+        const words = S.word.split(' ').length, at = S.word.slice(0, S.pos).split(' ').length;
+        state = 'Sentence · word ' + at + ' of ' + words;
+      } else if (S.numbers) state = 'Number · digit ' + (S.pos + 1) + ' of ' + S.word.length;
+      else state = (S.group ? 'Letter group' : 'Word') + ' · letter ' + (S.pos + 1) + ' of ' + S.word.length;
+      if (S.phase === 'retry') state += ' · try again';
+      else if (c.reps === 0) state += ' · new letter';
+    } else if (done) state = (S.sentence ? 'Sentence' : S.numbers ? 'Number' : S.group ? 'Letter group' : 'Word') + ' complete';
+    $('#pr-words').setAttribute('aria-selected', set.practice === 'words');
+    $('#pr-num').setAttribute('aria-selected', set.practice === 'numbers');
+    $('#pr-sent').setAttribute('aria-selected', set.practice === 'sentences');
+    $('#sent-lock').textContent = sentencesReady() ? '' : unlockedCount() + '/' + LETTERS.length;
+    $('#card-state').textContent = state;
+    renderPattern();
+
+    // key help
+    const kh = $('#keyhelp');
+    if (set.mode === 'send' && set.input === 'two') kh.innerHTML = '<span>Dit <kbd>J</kbd> <kbd>.</kbd> <kbd>←</kbd></span><span>Dah <kbd>K</kbd> <kbd>-</kbd> <kbd>→</kbd></span><span>Undo <kbd>⌫</kbd></span><span>Hint <kbd>H</kbd></span>';
+    else if (set.mode === 'send') kh.innerHTML = '<span>Hold <kbd>Space</kbd>. Presses shorter than ' + Math.round(2 * unitMs(set.keyWpm)) + ' ms are dits.</span><span>Hint <kbd>H</kbd></span>';
+    else {
+      kh.innerHTML = '<span>Type the letters you hear' + (S.sentence ? ', spaces are skipped' : '') + '</span><span>Replay <kbd>Space</kbd></span>';
+      const p = pool(), d = deck(), shaky = p.filter(x => d[x] && !grasped(x));
+      if (set.practice !== 'sentences' && p.some(x => !d[x])) {
+        kh.innerHTML += '<span>' + (shaky.length
+          ? 'Next ' + (set.practice === 'numbers' ? 'digit' : 'letter') + ' unlocks when these are solid: <b>' + shaky.join(' ') + '</b>'
+          : 'Everything is solid. A new ' + (set.practice === 'numbers' ? 'digit' : 'letter') + ' is coming up.') + '</span>';
+      }
+    }
+
+    // receive letter grid
+    if (set.mode === 'recv') {
+      const intro = pool().filter(x => deck()[x]);
+      const sig = intro.join('');
+      const grid = $('#letters');
+      if (grid.dataset.sig !== sig) {
+        grid.dataset.sig = sig;
+        grid.innerHTML = intro.slice().sort((a, b) => (a === '0') - (b === '0') || a.localeCompare(b)).map(x => '<button data-ch="' + x + '">' + x + '</button>').join('');
+      }
+    }
+    renderStats();
+    renderBoard();
+  }
+
+  function renderStats() {
+    const d = deck(), now = Date.now(), p = pool(), st = dayStats();
+    $('#s-streak').textContent = S.streak;
+    $('#s-today').textContent = st.reviews ? st.correct + '/' + st.reviews : '0';
+    $('#s-learned').textContent = p.filter(c => d[c] && d[c].interval >= LEARN_S).length + '/' + p.length;
+    $('#s-due').textContent = p.filter(c => d[c] && d[c].reps > 0 && d[c].due <= now).length;
+  }
+
+  function fmtGap(s) {
+    if (s < 60) return Math.round(s) + 's';
+    if (s < 3600) return Math.round(s / 60) + 'm';
+    if (s < 86400) return Math.round(s / 3600) + 'h';
+    return Math.round(s / 86400) + 'd';
+  }
+  function renderBoard() {
+    const d = deck(), now = Date.now();
+    const maxLog = Math.log(7 * 86400 / 8);
+    $('#tiles').innerHTML = LETTERS.concat(DIGITS_SHOWN).map(ch => {
+      const c = d[ch];
+      let state = 'new', pct = 0, label = 'not yet';
+      if (c && c.reps > 0) {
+        state = c.interval >= SOLID_S ? 'solid' : c.interval >= LEARN_S ? 'familiar' : 'learning';
+        pct = Math.max(4, Math.min(100, Math.log(Math.max(c.interval, 8) / 8) / maxLog * 100));
+        label = 'next gap ' + fmtGap(c.interval);
+      }
+      const mini = set.showCodes ? MORSE[ch].split('').map(x => '<i class="' + (x === '.' ? 'd' : 'a') + '"></i>').join('') : '';
+      const due = c && c.reps > 0 && c.due <= now ? '<span class="due" title="Due now"></span>' : '';
+      return '<button class="tile" data-ch="' + ch + '" data-state="' + state + '" title="' + ch + ': ' + label + '. Click to hear it.">' + due +
+        '<span class="ch">' + ch + '</span><span class="mini">' + mini + '</span><span class="bar"><b style="width:' + pct + '%"></b></span></button>';
+    }).join('');
+    $('#codes-btn').textContent = set.showCodes ? 'Hide codes' : 'Show codes';
+    $('#codes-btn').setAttribute('aria-pressed', set.showCodes);
+  }
+
+  // ---------- input wiring (each listener attached exactly once) ----------
+  const inSettings = t => t && t.closest && t.closest('#settings');
+  const DIT_KEYS = ['.', 'j', 'J', 'ArrowLeft'];
+  const DAH_KEYS = ['-', 'k', 'K', 'ArrowRight'];
+
+  document.addEventListener('keydown', e => {
+    if (inSettings(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key;
+    if (set.mode === 'send') {
+      if (set.input === 'straight' && e.code === 'Space') { e.preventDefault(); if (!e.repeat) keyDown(); return; }
+      if (set.input === 'two' && DIT_KEYS.includes(k)) { e.preventDefault(); if (!e.repeat) { pressVisual('#btn-dit'); addElement('.'); } return; }
+      if (set.input === 'two' && DAH_KEYS.includes(k)) { e.preventDefault(); if (!e.repeat) { pressVisual('#btn-dah'); addElement('-'); } return; }
+      if (k === 'Backspace') { e.preventDefault(); if (!e.repeat) backspace(); return; }
+      if (k === 'h' || k === 'H' || k === '?') { if (!e.repeat) showHint(false); return; }
+      if (e.code === 'Space') e.preventDefault();
+    } else {
+      if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) replay(); return; }
+      if (k.length === 1 && /[a-z0-9]/i.test(k)) { e.preventDefault(); if (!e.repeat) answer(k.toUpperCase()); }
+    }
+  });
+  document.addEventListener('keyup', e => {
+    if (inSettings(e.target)) return;
+    // Stop Space from also "clicking" whatever button has focus.
+    if (e.code === 'Space') e.preventDefault();
+    if (e.code === 'Space' && set.mode === 'send' && set.input === 'straight') keyUp();
+  });
+  window.addEventListener('blur', () => { if (S.pressing) { S.pressing = 0; sidetoneOff(); $('#btn-key').classList.remove('pressed'); } });
+
+  function pressVisual(sel) {
+    const b = $(sel); b.classList.add('pressed');
+    setTimeout(() => b.classList.remove('pressed'), 110);
+  }
+  // Pointer buttons act on pointerdown only. A click with detail 0 is keyboard activation (Enter) and is handled separately.
+  function tapButton(sel, fn) {
+    const b = $(sel);
+    b.addEventListener('pointerdown', e => { if (e.button !== 0) return; e.preventDefault(); pressVisual(sel); fn(); });
+    b.addEventListener('click', e => { if (e.detail === 0) fn(); });
+  }
+  tapButton('#btn-dit', () => addElement('.'));
+  tapButton('#btn-dah', () => addElement('-'));
+  tapButton('#btn-replay', replay);
+
+  const keyBtn = $('#btn-key');
+  keyBtn.addEventListener('pointerdown', e => { if (e.button !== 0) return; e.preventDefault(); try { keyBtn.setPointerCapture(e.pointerId); } catch (x) {} keyDown(); });
+  keyBtn.addEventListener('pointerup', keyUp);
+  keyBtn.addEventListener('pointercancel', keyUp);
+  keyBtn.addEventListener('contextmenu', e => e.preventDefault());
+
+  $('#letters').addEventListener('pointerdown', e => {
+    const b = e.target.closest('button[data-ch]'); if (!b || e.button !== 0) return;
+    e.preventDefault(); b.classList.add('pressed'); setTimeout(() => b.classList.remove('pressed'), 110);
+    answer(b.dataset.ch);
+  });
+  $('#letters').addEventListener('click', e => { const b = e.target.closest('button[data-ch]'); if (b && e.detail === 0) answer(b.dataset.ch); });
+
+  $('#tiles').addEventListener('click', e => {
+    const b = e.target.closest('.tile'); if (!b) return;
+    b.blur();
+    if (S.lock) return;
+    playPattern(MORSE[b.dataset.ch]);
+  });
+  $('#unlock-btn').addEventListener('click', e => {
+    e.currentTarget.blur();
+    const d = deck(), next = pool().find(c => !d[c]);
+    if (!next) return;
+    d[next] = newCard(); save();
+    S.forceNew = next;
+    stopPlayback();
+    nextWord();
+  });
+  $('#codes-btn').addEventListener('click', e => { e.currentTarget.blur(); set.showCodes = !set.showCodes; save(); renderBoard(); });
+
+  function setMode(m) {
+    if (set.mode === m) return;
+    stopPlayback();
+    set.mode = m; save();
+    S.last = null;
+    audio();
+    nextWord();
+  }
+  function setPractice(p) {
+    if (p === 'sentences' && !sentencesReady()) {
+      setFeedback('Sentences open once all 26 letters are unlocked. You have ' + unlockedCount() + ' so far.<br><button class="inline-btn" id="unlock-all">Unlock all letters and start sentences</button>');
+      return;
+    }
+    if (set.practice === p) return;
+    stopPlayback();
+    set.practice = p; save();
+    nextWord();
+  }
+  $('#pr-words').addEventListener('click', e => { e.currentTarget.blur(); setPractice('words'); });
+  $('#pr-num').addEventListener('click', e => { e.currentTarget.blur(); setPractice('numbers'); });
+  $('#pr-sent').addEventListener('click', e => { e.currentTarget.blur(); setPractice('sentences'); });
+  $('#feedback').addEventListener('click', e => {
+    if (!e.target.closest('#unlock-all')) return;
+    unlockAll();
+    set.practice = 'sentences'; save();
+    stopPlayback();
+    nextWord();
+  });
+  $('#mode-send').addEventListener('click', e => { e.currentTarget.blur(); setMode('send'); });
+  $('#mode-recv').addEventListener('click', e => { e.currentTarget.blur(); setMode('recv'); });
+
+  // settings
+  $('#settings-btn').addEventListener('click', e => {
+    const p = $('#settings'); p.hidden = !p.hidden;
+    e.currentTarget.setAttribute('aria-expanded', !p.hidden);
+    e.currentTarget.blur();
+  });
+  function syncSettings() {
+    $('#in-two').checked = set.input === 'two';
+    $('#in-straight').checked = set.input === 'straight';
+    $('#keywpm').value = set.keyWpm; $('#keywpm-out').textContent = set.keyWpm + ' WPM';
+    $('#keywpm-field').style.opacity = set.input === 'straight' ? 1 : .5;
+    $('#playwpm').value = set.playWpm; $('#playwpm-out').textContent = set.playWpm + ' WPM';
+    $('#freq').value = set.freq; $('#freq-out').textContent = set.freq + ' Hz';
+    $('#vol').value = set.volume; $('#vol-out').textContent = Math.round(set.volume * 100) + '%';
+    $('#sound').checked = set.sound;
+  }
+  ['#in-two', '#in-straight'].forEach(id => $(id).addEventListener('change', e => { set.input = e.target.value; save(); syncSettings(); render(); }));
+  $('#keywpm').addEventListener('input', e => { set.keyWpm = +e.target.value; save(); syncSettings(); render(); });
+  $('#playwpm').addEventListener('input', e => { set.playWpm = +e.target.value; save(); syncSettings(); });
+  $('#playwpm').addEventListener('change', () => playPattern('-.-.'));
+  $('#freq').addEventListener('input', e => { set.freq = +e.target.value; save(); syncSettings(); });
+  $('#freq').addEventListener('change', () => playPattern('..'));
+  $('#vol').addEventListener('input', e => { set.volume = +e.target.value; if (master) master.gain.value = set.volume; save(); syncSettings(); });
+  $('#vol').addEventListener('change', () => playPattern('.'));
+  $('#sound').addEventListener('change', e => { set.sound = e.target.checked; save(); });
+  $('#reset').addEventListener('click', () => { $('#reset').hidden = true; $('#reset-yes').hidden = false; $('#reset-no').hidden = false; });
+  $('#reset-no').addEventListener('click', () => { $('#reset').hidden = false; $('#reset-yes').hidden = true; $('#reset-no').hidden = true; });
+  $('#reset-yes').addEventListener('click', () => {
+    DB.decks = { send: {}, recv: {} }; DB.stats = {}; S.streak = 0; S.last = null; save();
+    $('#reset').hidden = false; $('#reset-yes').hidden = true; $('#reset-no').hidden = true;
+    nextWord();
+  });
+
+  // keep "due" counts fresh while idle
+  setInterval(() => { renderStats(); renderBoard(); }, 5000);
+
+  syncSettings();
+  nextWord();
+})();
+</script>
+</body>
+</html>
