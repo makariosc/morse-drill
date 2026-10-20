@@ -193,10 +193,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     <label class="field"><span>Volume <output id="vol-out"></output></span>
       <input type="range" id="vol" min="0" max="1" step="0.05"></label>
     <div class="field">
-      <span>Options</span>
-      <label class="check"><input type="checkbox" id="sound"> Play the letter after you key it</label>
-    </div>
-    <div class="field">
       <span>Progress</span>
       <div class="danger"><button id="reset">Reset progress</button><button id="reset-yes" class="solid" hidden>Yes, erase everything</button><button id="reset-no" hidden style="border-color:var(--line-strong);color:var(--ink)">Keep it</button></div>
     </div>
@@ -461,7 +457,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   const GRASP_MIN = 5, GRASP_ACC = 0.85, GRASP_LAST = 3;     // at most this many learning cards before a new letter appears
   const SOLID_S = 86400;      // a day or more counts as long-term
   const MAX_S = 60 * 86400;
-  const DEFAULTS = { mode: 'send', input: 'two', keyWpm: 12, playWpm: 20, freq: 620, volume: 0.5, sound: true, showCodes: false, practice: 'words' };
+  const DEFAULTS = { mode: 'send', input: 'two', keyWpm: 12, playWpm: 20, freq: 620, volume: 0.5, showCodes: false, practice: 'words' };
 
   const $ = s => document.querySelector(s);
 
@@ -821,8 +817,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     if (S.sentence) setFeedback('<span class="ok">Sentence complete.</span>');
     else setFeedback('<span class="ok">' + S.word + '</span> ' + S.word.split('').map(c => pillsText(MORSE[c])).join(' &nbsp;/&nbsp; '));
     render();
-    // The finished word plays back while the next one is already up; keying cuts it off.
-    if (set.mode === 'send' && set.sound && !S.sentence) playWord(S.word);
     setTimeout(nextWord, S.sentence ? 600 : set.mode === 'recv' ? 400 : 250);
   }
 
@@ -1195,7 +1189,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     $('#playwpm').value = set.playWpm; $('#playwpm-out').textContent = set.playWpm + ' WPM';
     $('#freq').value = set.freq; $('#freq-out').textContent = set.freq + ' Hz';
     $('#vol').value = set.volume; $('#vol-out').textContent = Math.round(set.volume * 100) + '%';
-    $('#sound').checked = set.sound;
   }
   ['#in-two', '#in-straight'].forEach(id => $(id).addEventListener('change', e => { set.input = e.target.value; save(); syncSettings(); render(); }));
   $('#keywpm').addEventListener('input', e => { set.keyWpm = +e.target.value; save(); syncSettings(); render(); });
@@ -1205,7 +1198,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   $('#freq').addEventListener('change', () => playPattern('..'));
   $('#vol').addEventListener('input', e => { set.volume = +e.target.value; if (master) master.gain.value = set.volume; save(); syncSettings(); });
   $('#vol').addEventListener('change', () => playPattern('.'));
-  $('#sound').addEventListener('change', e => { set.sound = e.target.checked; save(); });
   $('#reset').addEventListener('click', () => { $('#reset').hidden = true; $('#reset-yes').hidden = false; $('#reset-no').hidden = false; });
   $('#reset-no').addEventListener('click', () => { $('#reset').hidden = false; $('#reset-yes').hidden = true; $('#reset-no').hidden = true; });
   $('#reset-yes').addEventListener('click', () => {
