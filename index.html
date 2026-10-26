@@ -184,6 +184,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
         <label class="check"><input type="radio" name="input" id="in-straight" value="straight"> Straight key</label>
       </fieldset>
     </div>
+    <label class="field"><span>Pause allowed inside a letter <output id="gaptol-out"></output></span>
+      <input type="range" id="gaptol" min="1" max="2" step="0.05"></label>
     <label class="field" id="keywpm-field"><span>Starting speed <output id="keywpm-out"></output></span>
       <input type="range" id="keywpm" min="5" max="30" step="1"></label>
     <label class="field"><span>Receive speed <output id="playwpm-out"></output></span>
@@ -463,7 +465,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   const GRASP_MIN = 5, GRASP_ACC = 0.85, GRASP_LAST = 3;     // at most this many learning cards before a new letter appears
   const SOLID_S = 86400;      // a day or more counts as long-term
   const MAX_S = 60 * 86400;
-  const DEFAULTS = { mode: 'send', input: 'two', keyWpm: 12, playWpm: 20, freq: 620, volume: 0.5, showCodes: false, practice: 'words' };
+  const DEFAULTS = { mode: 'send', input: 'two', keyWpm: 12, playWpm: 20, freq: 620, volume: 0.5, gapTolerance: 1.25, showCodes: false, practice: 'words' };
 
   const $ = s => document.querySelector(s);
 
@@ -889,10 +891,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     if (!fromStraight) {
       blip(el);
       // The element "sounds" for elU units, then the character ends after LETTER_GAP units of quiet.
-      armCharTimer((elU + LETTER_GAP) * u);
+      armCharTimer(charGapMs(el, false));
     } else {
       // Straight key: the key is already up, so the quiet starts now.
-      armCharTimer(LETTER_GAP * u);
+      armCharTimer(charGapMs(el, true));
     }
     S.input += el;
     S.lastInputAt = Date.now();
@@ -911,7 +913,25 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     for (let i = 1; i < n; i++) {
       const a = trace[i - 1], b = trace[i];
       noteUnit(a.up != null ? b.t - a.up : (b.t - a.t) / (elUnits(a.el) + 1));
+      if (a.up == null) noteTap(b.t - a.t);
     }
+  }
+  // Two keys: people tap to a finger rhythm, not Morse ratios, and taps wobble. Keep the average time
+  // between taps inside a letter and how much it varies, so a slightly late tap doesn't end the letter.
+  function noteTap(iv) {
+    if (!(iv > 30 && iv < 1500)) return;
+    const m = set.tapMs || iv, dev = set.tapDev || iv * 0.25;
+    set.tapDev = dev + (Math.abs(iv - m) - dev) * 0.3;
+    set.tapMs = m + (iv - m) * 0.3;
+  }
+  // How long the line must stay quiet before the decoder ends the character.
+  const TAP_FLOOR = 300;  // ms: never end a two-key letter quicker than this
+  function charGapMs(el, straight) {
+    const u = sendUnit(straight), tol = set.gapTolerance || 1.25;
+    if (straight) return LETTER_GAP * u * tol;
+    const morse = (elUnits(el) + LETTER_GAP) * u;
+    const rhythm = set.tapMs ? set.tapMs + 3 * (set.tapDev || set.tapMs * 0.25) : 0;
+    return Math.max(morse, rhythm, TAP_FLOOR) * tol;
   }
   // Straight key: learn dit and dah lengths from presses whose intended element is known.
   // In a letter that decoded wrong but had the right number of elements, a press that landed close to
@@ -963,7 +983,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
       learnDurations(S.trace, keyed, target);  // right rhythm, a dit or dah misread
     } else if (target.startsWith(keyed)) {
       // Broke off early: a gap meant to be inside the letter was too long for the decoder. Ease the estimate slower.
-      if (set.sendUnitMs) { set.sendUnitMs = Math.min(400, set.sendUnitMs * 1.12); save(); }
+      if (set.sendUnitMs) set.sendUnitMs = Math.min(400, set.sendUnitMs * 1.12);
+      if (set.tapDev) set.tapDev *= 1.3;
+      save();
     }
     const sent = DECODE[keyed];
     let why = '';
@@ -1011,7 +1033,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     S.input = S.input.slice(0, -1);
     S.trace.pop();
     // Give a moment to key the replacement before the decoder closes the character.
-    if (S.input) armCharTimer((3 + LETTER_GAP) * sendUnit(set.input === 'straight'));
+    if (S.input) armCharTimer(charGapMs('-', set.input === 'straight'));
     else clearCharTimer();
     renderPattern();
   }
@@ -1335,6 +1357,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     $('#keywpm').value = set.keyWpm; $('#keywpm-out').textContent = set.keyWpm + ' WPM';
     $('#playwpm').value = set.playWpm; $('#playwpm-out').textContent = set.playWpm + ' WPM';
     $('#freq').value = set.freq; $('#freq-out').textContent = set.freq + ' Hz';
+    $('#gaptol').value = set.gapTolerance; $('#gaptol-out').textContent = set.gapTolerance <= 1 ? 'strict' : '+' + Math.round((set.gapTolerance - 1) * 100) + '%';
     $('#vol').value = set.volume; $('#vol-out').textContent = Math.round(set.volume * 100) + '%';
   }
   ['#in-two', '#in-straight'].forEach(id => $(id).addEventListener('change', e => { set.input = e.target.value; save(); syncSettings(); render(); }));
@@ -1348,6 +1371,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   $('#playwpm').addEventListener('change', () => playPattern('-.-.', set.playWpm));
   $('#freq').addEventListener('input', e => { set.freq = +e.target.value; save(); syncSettings(); });
   $('#freq').addEventListener('change', () => playPattern('..'));
+  $('#gaptol').addEventListener('input', e => { set.gapTolerance = +e.target.value; save(); syncSettings(); });
   $('#vol').addEventListener('input', e => { set.volume = +e.target.value; if (master) master.gain.value = set.volume; save(); syncSettings(); });
   $('#vol').addEventListener('change', () => playPattern('.'));
   $('#reset').addEventListener('click', () => { $('#reset').hidden = true; $('#reset-yes').hidden = false; $('#reset-no').hidden = false; });
