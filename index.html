@@ -184,7 +184,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
         <label class="check"><input type="radio" name="input" id="in-straight" value="straight"> Straight key</label>
       </fieldset>
     </div>
-    <label class="field" id="keywpm-field"><span>Straight key speed <output id="keywpm-out"></output></span>
+    <label class="field" id="keywpm-field"><span>Starting speed <output id="keywpm-out"></output></span>
       <input type="range" id="keywpm" min="5" max="30" step="1"></label>
     <label class="field"><span>Receive speed <output id="playwpm-out"></output></span>
       <input type="range" id="playwpm" min="5" max="35" step="1"></label>
@@ -249,6 +249,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   const MORSE = {A:'.-',B:'-...',C:'-.-.',D:'-..',E:'.',F:'..-.',G:'--.',H:'....',I:'..',J:'.---',K:'-.-',L:'.-..',M:'--',N:'-.',O:'---',P:'.--.',Q:'--.-',R:'.-.',S:'...',T:'-',U:'..-',V:'...-',W:'.--',X:'-..-',Y:'-.--',Z:'--..',
     '1':'.----','2':'..---','3':'...--','4':'....-','5':'.....','6':'-....','7':'--...','8':'---..','9':'----.','0':'-----'};
   const DECODE = Object.fromEntries(Object.entries(MORSE).map(([k, v]) => [v, k]));
+  // Every pattern that is the start of some character; anything else can't be completed.
+  const PREFIXES = new Set(Object.values(MORSE).flatMap(c => [...c].map((_, i) => c.slice(0, i + 1))));
   // Standard spacing: 1 unit between elements of a letter, 3 between letters, 7 between words.
   // The decoder ends a character after LETTER_GAP units of quiet, halfway between the two.
   const LETTER_GAP = 2;
@@ -490,7 +492,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   const unitMs = wpm => 1200 / wpm;
 
   // ---------- session state ----------
-  const S = { lastPress: null, charTimer: 0, lastInputAt: 0, badAll: false, numbers: false, word: '', pos: 0, graded: new Set(), recent: [], recentSent: [], sentence: false, group: false, current: null, input: '', phase: 'ask', hintShown: false, usedHint: false, shownAt: 0, lock: false, last: null, streak: 0, pressing: 0, hintTimer: 0, revealed: false, badIdx: -1 };
+  const S = { trace: [], prevChar: null, lastPress: null, charTimer: 0, lastInputAt: 0, badAll: false, numbers: false, word: '', pos: 0, graded: new Set(), recent: [], recentSent: [], sentence: false, group: false, current: null, input: '', phase: 'ask', hintShown: false, usedHint: false, shownAt: 0, lock: false, last: null, streak: 0, pressing: 0, hintTimer: 0, revealed: false, badIdx: -1 };
 
   // ---------- audio ----------
   let ac = null, master = null, sidetone = null, scheduled = [];
@@ -532,9 +534,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     scheduled = [];
   }
   // Send mode plays back at the user's own keying speed, measured from their presses (a smoothed unit length in ms).
+  // Speeding up is followed quickly (otherwise the decoder's letter gap stays long and fast letters merge);
+  // slowing down is followed more gently, so one hesitation doesn't throw the estimate off.
+  const UNIT_FASTER = 0.4, UNIT_SLOWER = 0.15;
   function noteUnit(sample) {
     if (!(sample > 20 && sample < 400)) return;  // outside 3-60 WPM is a pause or a slip, not keying
-    set.sendUnitMs = set.sendUnitMs ? set.sendUnitMs * 0.8 + sample * 0.2 : sample;
+    const cur = set.sendUnitMs;
+    set.sendUnitMs = cur ? cur + (sample - cur) * (sample < cur ? UNIT_FASTER : UNIT_SLOWER) : sample;
     save();
   }
   const sendWpm = () => Math.round(Math.min(35, Math.max(5, 1200 / set.sendUnitMs)));
@@ -793,7 +799,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
       note = ' Sentences open once all 26 letters are unlocked in ' + (set.mode === 'send' ? 'Send' : 'Receive') + '.';
     }
     const { word, group, sentence, numbers } = set.practice === 'sentences' ? pickSentence() : set.practice === 'numbers' ? pickNumber() : pickWord();
-    S.lastPress = null;
+    S.lastPress = null; S.prevChar = null;
     S.word = word; S.group = group; S.sentence = !!sentence; S.numbers = !!numbers; S.pos = 0; S.graded = new Set();
     S.lock = false;
     startLetter();
@@ -814,6 +820,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     S.current = S.word[S.pos];
     S.last = S.current;
     clearCharTimer();
+    S.trace = [];
     S.input = ''; S.badIdx = -1; S.badAll = false;
     S.phase = 'ask';
     const c = deck()[S.current];
@@ -873,14 +880,14 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     S.charTimer = setTimeout(() => { if (S.word === word && S.pos === pos) endChar(); }, ms);
   }
 
-  function addElement(el, fromStraight) {
+  // startT is when this element began: now for two keys, the moment the straight key went down.
+  function addElement(el, fromStraight, startT) {
     if (set.mode !== 'send' || S.lock || !S.current) return;
-    const now = performance.now(), u = sendUnit(fromStraight), elU = el === '.' ? 1 : 3;
+    const now = performance.now(), elU = el === '.' ? 1 : 3, u = sendUnit(fromStraight);
+    // Keep the timing of every element in this character; it is learned from once we know what was meant.
+    S.trace.push(fromStraight ? { t: startT, up: now, el } : { t: now, el });
     if (!fromStraight) {
       blip(el);
-      // Two keys: time between presses inside a character is the previous element plus one unit.
-      if (S.input && S.lastPress) noteUnit((now - S.lastPress.t) / ((S.lastPress.el === '.' ? 1 : 3) + 1));
-      S.lastPress = { t: now, el };
       // The element "sounds" for elU units, then the character ends after LETTER_GAP units of quiet.
       armCharTimer((elU + LETTER_GAP) * u);
     } else {
@@ -889,8 +896,47 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     }
     S.input += el;
     S.lastInputAt = Date.now();
+    // No character starts like this, so it has already gone wrong (usually two letters run together):
+    // decode it now rather than letting it grow.
+    if (!PREFIXES.has(S.input)) { clearCharTimer(); return endChar(); }
     armHintTimer();
     renderPattern();
+  }
+
+  // Learning from known gaps. Two keys only give press times: press-to-press inside a letter is the
+  // element plus 1 unit, and across a letter gap it is the element plus 3. A straight key gives the
+  // real silence: 1 unit inside a letter, 3 between letters.
+  const elUnits = el => el === '.' ? 1 : 3;
+  function learnInside(trace, n) {
+    for (let i = 1; i < n; i++) {
+      const a = trace[i - 1], b = trace[i];
+      noteUnit(a.up != null ? b.t - a.up : (b.t - a.t) / (elUnits(a.el) + 1));
+    }
+  }
+  // Straight key: learn dit and dah lengths from presses whose intended element is known.
+  // In a letter that decoded wrong but had the right number of elements, a press that landed close to
+  // the dit/dah line and was read the wrong way is taken as the element it was meant to be. That is what
+  // lets the line follow you when you speed up and your dahs drop below the old line.
+  function learnDurations(trace, keyed, pattern) {
+    if (!trace.length || trace[0].up == null) return;
+    const { dit, dah } = ditDah(), split = (dit + dah) / 2;
+    for (let i = 0; i < pattern.length && i < trace.length; i++) {
+      const dur = trace[i].up - trace[i].t;
+      if (!(dur > 20 && dur < 1500)) continue;
+      if (keyed[i] !== pattern[i] && !(dur > split * 0.5 && dur < split * 1.6)) continue;  // a clear miss, not a borderline one
+      if (pattern[i] === '.') { set.ditMs = (set.ditMs || dit) + (dur - (set.ditMs || dit)) * 0.35; noteUnit(dur); }
+      else { set.dahMs = (set.dahMs || dah) + (dur - (set.dahMs || dah)) * 0.35; noteUnit(dur / 3); }
+    }
+    // keep the two apart, so a run of long dits can't swallow the dahs
+    if (set.dahMs && set.ditMs && set.dahMs < set.ditMs * 2) set.dahMs = set.ditMs * 2;
+    save();
+  }
+  function learnLetterGap(a, b) {
+    if (!a || !b) return;
+    // more than about 6 units is someone pausing to think, not keying
+    const gapMs = a.up != null ? b.t - a.up : b.t - a.t - elUnits(a.el) * sendUnit(false);
+    if (gapMs > 6 * sendUnit(a.up != null)) return;
+    noteUnit(a.up != null ? gapMs / 3 : (b.t - a.t) / (elUnits(a.el) + 3));
   }
 
   // The line went quiet: decode what was keyed and check it against the expected letter.
@@ -898,7 +944,27 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     S.charTimer = 0;
     if (set.mode !== 'send' || S.lock || !S.input || !S.current) return;
     const keyed = S.input, target = MORSE[S.current];
-    if (keyed === target) return onSendRight();
+    if (keyed === target) {
+      // Right letter: its inner gaps and the gap before it are known for certain, so learn from them.
+      learnDurations(S.trace, keyed, target);
+      learnInside(S.trace, S.trace.length);
+      if (S.prevChar && S.prevChar.pos === S.pos - 1 && S.word[S.pos - 1] !== ' ') learnLetterGap(S.prevChar.last, S.trace[0]);
+      S.prevChar = { pos: S.pos, last: S.trace[S.trace.length - 1] };
+      return onSendRight();
+    }
+    S.prevChar = null;
+    if (keyed.startsWith(target)) {
+      // Ran on into the next letter: the gap after the target's last element was meant as a letter gap
+      // but came out shorter than the decoder expected, so the estimate is too slow. That gap is exact.
+      learnDurations(S.trace, keyed, target);
+      learnInside(S.trace, target.length);
+      learnLetterGap(S.trace[target.length - 1], S.trace[target.length]);
+    } else if (keyed.length === target.length) {
+      learnDurations(S.trace, keyed, target);  // right rhythm, a dit or dah misread
+    } else if (target.startsWith(keyed)) {
+      // Broke off early: a gap meant to be inside the letter was too long for the decoder. Ease the estimate slower.
+      if (set.sendUnitMs) { set.sendUnitMs = Math.min(400, set.sendUnitMs * 1.12); save(); }
+    }
     const sent = DECODE[keyed];
     let why = '';
     if (target.startsWith(keyed)) why = ' The gap after it was long enough to end the letter, so keep the parts of ' + S.current + ' closer together.';
@@ -936,13 +1002,14 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     setTimeout(() => {
       if (S.current !== ch || S.pos !== pos) return;
       S.input = ''; S.badAll = false; S.lock = false;
-      S.lastPress = null;
+      S.lastPress = null; S.trace = [];
       renderPattern();
     }, 900);
   }
   function backspace() {
     if (set.mode !== 'send' || S.lock || !S.input) return;
     S.input = S.input.slice(0, -1);
+    S.trace.pop();
     // Give a moment to key the replacement before the decoder closes the character.
     if (S.input) armCharTimer((3 + LETTER_GAP) * sendUnit(set.input === 'straight'));
     else clearCharTimer();
@@ -956,6 +1023,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   }
 
   // straight key
+  function ditDah() {
+    const u0 = set.sendUnitMs || unitMs(set.keyWpm);
+    return { dit: set.ditMs || u0, dah: set.dahMs || 3 * u0 };
+  }
   function keyDown() {
     if (set.mode !== 'send' || set.input !== 'straight' || S.lock || S.pressing) return;
     clearCharTimer();  // the line isn't quiet while the key is down
@@ -965,13 +1036,15 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   }
   function keyUp() {
     if (!S.pressing) return;
-    const dur = performance.now() - S.pressing;
+    const start = S.pressing, dur = performance.now() - start;
     S.pressing = 0;
     sidetoneOff();
     $('#btn-key').classList.remove('pressed');
-    const el = dur < 2 * unitMs(set.keyWpm) ? '.' : '-';
-    noteUnit(el === '.' ? dur : dur / 3);
-    addElement(el, true);
+    // Dit or dah: split halfway between your own recent dit and dah lengths, so the line moves with you.
+    const { dit, dah } = ditDah();
+    // (The dit and dah lengths are learned once the letter is decoded and we know what each press was meant to be.)
+    const el = dur < (dit + dah) / 2 ? '.' : '-';
+    addElement(el, true, start);
   }
 
   // --- receive mode ---
@@ -1086,7 +1159,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     // key help
     const kh = $('#keyhelp');
     if (set.mode === 'send' && set.input === 'two') kh.innerHTML = '<span>Dit <kbd>J</kbd> <kbd>.</kbd> <kbd>←</kbd></span><span>Dah <kbd>K</kbd> <kbd>-</kbd> <kbd>→</kbd></span><span>Undo <kbd>⌫</kbd></span><span>Hint <kbd>H</kbd></span>';
-    else if (set.mode === 'send') kh.innerHTML = '<span>Hold <kbd>Space</kbd>. Presses shorter than ' + Math.round(2 * unitMs(set.keyWpm)) + ' ms are dits.</span><span>Hint <kbd>H</kbd></span>';
+    else if (set.mode === 'send') kh.innerHTML = '<span>Hold <kbd>Space</kbd>. Presses shorter than ' + Math.round((ditDah().dit + ditDah().dah) / 2) + ' ms are dits.</span><span>Hint <kbd>H</kbd></span>';
     if (set.mode === 'send' && set.sendUnitMs) kh.innerHTML += '<span>Your speed: about ' + sendWpm() + ' WPM</span>';
     if (set.mode === 'send') kh.innerHTML += '<span>A pause of about three dits ends a letter</span>';
     else {
@@ -1260,13 +1333,17 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     $('#in-two').checked = set.input === 'two';
     $('#in-straight').checked = set.input === 'straight';
     $('#keywpm').value = set.keyWpm; $('#keywpm-out').textContent = set.keyWpm + ' WPM';
-    $('#keywpm-field').style.opacity = set.input === 'straight' ? 1 : .5;
     $('#playwpm').value = set.playWpm; $('#playwpm-out').textContent = set.playWpm + ' WPM';
     $('#freq').value = set.freq; $('#freq-out').textContent = set.freq + ' Hz';
     $('#vol').value = set.volume; $('#vol-out').textContent = Math.round(set.volume * 100) + '%';
   }
   ['#in-two', '#in-straight'].forEach(id => $(id).addEventListener('change', e => { set.input = e.target.value; save(); syncSettings(); render(); }));
-  $('#keywpm').addEventListener('input', e => { set.keyWpm = +e.target.value; save(); syncSettings(); render(); });
+  $('#keywpm').addEventListener('input', e => {
+    set.keyWpm = +e.target.value;
+    // start the live estimate again from the chosen speed
+    set.sendUnitMs = unitMs(set.keyWpm); set.ditMs = 0; set.dahMs = 0;
+    save(); syncSettings(); render();
+  });
   $('#playwpm').addEventListener('input', e => { set.playWpm = +e.target.value; save(); syncSettings(); });
   $('#playwpm').addEventListener('change', () => playPattern('-.-.', set.playWpm));
   $('#freq').addEventListener('input', e => { set.freq = +e.target.value; save(); syncSettings(); });
