@@ -193,10 +193,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     <label class="field"><span>Volume <output id="vol-out"></output></span>
       <input type="range" id="vol" min="0" max="1" step="0.05"></label>
     <div class="field">
-      <span>Timing</span>
-      <label class="check"><input type="checkbox" id="timing"> Check the gaps in my keying</label>
-    </div>
-    <div class="field">
       <span>Progress</span>
       <div class="danger"><button id="reset">Reset progress</button><button id="reset-yes" class="solid" hidden>Yes, erase everything</button><button id="reset-no" hidden style="border-color:var(--line-strong);color:var(--ink)">Keep it</button></div>
     </div>
@@ -254,8 +250,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     '1':'.----','2':'..---','3':'...--','4':'....-','5':'.....','6':'-....','7':'--...','8':'---..','9':'----.','0':'-----'};
   const DECODE = Object.fromEntries(Object.entries(MORSE).map(([k, v]) => [v, k]));
   // Standard spacing: 1 unit between elements of a letter, 3 between letters, 7 between words.
-  // A gap past GAP_LONG inside a letter ends it; a gap under GAP_SHORT between letters runs them together.
-  const GAP_LONG = 2.5, GAP_SHORT = 1.5;
+  // The decoder ends a character after LETTER_GAP units of quiet, halfway between the two.
+  const LETTER_GAP = 2;
   const LETTERS = 'EATINOSHRDLUCMWFGYPBVKJXQZ'.split('');
   const START = ['E', 'A', 'T'];
   const WORDS = 'A AT AN AS AM AH BE BY DO GO HE HI IF IN IS IT ME MY NO OF OH OK ON OR SO TO UP US WE EAT TEA ATE TAT TEAT SEAT SAT SET SIT TIE TIN TEN NET NEST TEST TOAST TASTE STATE EAST NEAT SEA SEE SEEN TEE TENT ANT TAN THE AND FOR ARE BUT NOT YOU ALL ANY CAN HAD HER WAS ONE OUR OUT DAY GET HAS HIM HIS HOW MAN NEW NOW OLD TWO WAY WHO BOY DID ITS LET PUT SAY SHE TOO USE THAT WITH HAVE THIS WILL YOUR FROM THEY KNOW WANT BEEN GOOD MUCH SOME TIME VERY WHEN COME HERE JUST LIKE LONG MAKE MANY MORE ONLY OVER SUCH TAKE THAN THEM WELL WERE TOE TOT NUT NOR ROT RAT TAR ART EAR ERA ERR RED RID ROD NOD DOT DON DEN END ADD AID ADO DAD DIE DOE DUE DUN HEAT HATE HAT HIT HOT HEN SHOE HAM HUM HUE HUT SUN SON SIN SIR ION INN TINS TENS TEES TEEN TEASE STAIN SAINT SATIN STINT RAIN REIN RIDE RISE ROSE RATE RITE ROTE NOTE NOSE TONE TORE TEAR TIER TIDE TOAD ROAD READ DEAR DEER DEED REED NEED SEED SEND SAND HAND LAND LANE LINE LION LOAN LONE LOSE LOST LIST LINT TILT TILL TELL TALL TALE TEAL SEAL SALE SALT SLAT SLIT SLOT LOTS LETS LEAD DEAL DIAL DIRT DART DASH DISH FISH FIST GIFT LIFT LEFT FELT MELT MALT MAST MIST MUST MOST MOSS MESS LESS LOSS TOSS TOES DOES GOES HOSE HOST HINT HUNT HURT HURL HULL HALL HILL HOLE HOME HOPE ROPE RIPE PIPE WIPE WISE WIRE TIRE HIRE HERO SISTER LISTEN SILENT STOLEN STONE NOTES ONSET TENET SENSE TENSE RINSE RISEN SIREN RESIN ASIDE IDEAS IDEA AREA ARENA EATEN EASE ELSE REST BEST WEST VEST ZEST TREE FREE THREE THESE THOSE THERE THEIR OTHER AFTER LATER WATER OFTEN ENTER INTER OUTER OTTER UTTER UNDER ORDER OLDER ELDER ALTER SALAD SANDAL ATONE ALONE SHINE SHONE SHIN CHIN CHAT THEN THIN TINT TAINT TRAIN TRAIT TREAD TREAT TREND TEND RENT SENT DENT LENT WENT WONT DINNER INNER SINNER TENNIS TENANT ATTEND ATTAIN NATION RATION STATION SOONER NOON SOON MOON MOOD FOOD HOOD WOOD WOOL TOOL TOOLS STOOL SPOOL SPOON ANTS NETS TESTS TASTES STATES SEATS EATS TEAS TIES TINES TANS TOTE INTENT INTENSE TANNIN LOAD LORD WORD WARD WARM WORM WORK WORLD WOULD COULD SHOULD HELLO HELP HELD HOLD TOLD SOLD COLD BOLD FOLD GOLD MOLD ODD ADS NINE NONE NOISE POISE POINT PAINT PRINT SPRINT SPIRIT SAID SAIL TAIL RAIL NAIL MAIL MAIN PAIN GAIN VAIN LAIN DUNE TUNE TUNA TUBA TUBE CUBE CUTE MUTE MULE RULE RUSE MUSE FUSE FUME DUST RUST LUST GUST BUST JEST BEAT BEAN DEAN LEAN MEAN MEAT RUN FUN GUN BUN NUN PUN PEN MEN YEN CAT CAR CAP CAB CAD BAD BAT BIT BET BED BAG BIG BUG DUG HUG MUG RUG TUG DOG COT CUT RUT GUT FAN FAT FIT FIN FUR FAR FAD FED FEW DEW HEW COW ROW TOW SOW LOW BOW HID HOG HOP HIP TOP TIP TAP LAP LIP LID LAD MAD MAT MAP MOP CUP PUP PAN PAT PET PIT POT YES YET YAK YAM YARN YEAR YELL YELLOW QUIZ QUIT QUITE QUOTE QUEEN QUERY ZOO ZONE ZERO ZINC JAM JAR JET JOG JOY JOB JAB JOT JUG KIT KIN KID KEY KITE KIND KING KISS KNOT KNIT KNEE VAT VAN VET VOW VINE VOTE WAX WET WIT WIN WIG WAR WEB WED OX FOX BOX MIX SIX FIX TAX TIDAL TOTAL METAL PETAL PANEL TUNNEL FUNNEL SIDE WIDE HIDE AIDE BIDE RATED DATED MATED SATED HATED TINTED RENTED DENTED TENTED DENSE DENTS TENTS'.split(' ');
@@ -465,7 +461,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   const GRASP_MIN = 5, GRASP_ACC = 0.85, GRASP_LAST = 3;     // at most this many learning cards before a new letter appears
   const SOLID_S = 86400;      // a day or more counts as long-term
   const MAX_S = 60 * 86400;
-  const DEFAULTS = { mode: 'send', input: 'two', keyWpm: 12, playWpm: 20, freq: 620, volume: 0.5, checkTiming: true, showCodes: false, practice: 'words' };
+  const DEFAULTS = { mode: 'send', input: 'two', keyWpm: 12, playWpm: 20, freq: 620, volume: 0.5, showCodes: false, practice: 'words' };
 
   const $ = s => document.querySelector(s);
 
@@ -494,7 +490,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   const unitMs = wpm => 1200 / wpm;
 
   // ---------- session state ----------
-  const S = { lastPress: null, lastRelease: 0, pressGap: null, numbers: false, word: '', pos: 0, graded: new Set(), recent: [], recentSent: [], sentence: false, group: false, current: null, input: '', phase: 'ask', hintShown: false, usedHint: false, shownAt: 0, lock: false, last: null, streak: 0, pressing: 0, hintTimer: 0, revealed: false, badIdx: -1 };
+  const S = { lastPress: null, charTimer: 0, lastInputAt: 0, badAll: false, numbers: false, word: '', pos: 0, graded: new Set(), recent: [], recentSent: [], sentence: false, group: false, current: null, input: '', phase: 'ask', hintShown: false, usedHint: false, shownAt: 0, lock: false, last: null, streak: 0, pressing: 0, hintTimer: 0, revealed: false, badIdx: -1 };
 
   // ---------- audio ----------
   let ac = null, master = null, sidetone = null, scheduled = [];
@@ -797,7 +793,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
       note = ' Sentences open once all 26 letters are unlocked in ' + (set.mode === 'send' ? 'Send' : 'Receive') + '.';
     }
     const { word, group, sentence, numbers } = set.practice === 'sentences' ? pickSentence() : set.practice === 'numbers' ? pickNumber() : pickWord();
-    S.lastPress = null; S.lastRelease = 0;
+    S.lastPress = null;
     S.word = word; S.group = group; S.sentence = !!sentence; S.numbers = !!numbers; S.pos = 0; S.graded = new Set();
     S.lock = false;
     startLetter();
@@ -817,7 +813,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   function startLetter() {
     S.current = S.word[S.pos];
     S.last = S.current;
-    S.input = ''; S.badIdx = -1;
+    clearCharTimer();
+    S.input = ''; S.badIdx = -1; S.badAll = false;
     S.phase = 'ask';
     const c = deck()[S.current];
     S.hintShown = c.reps === 0;
@@ -863,39 +860,59 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   }
 
   // --- send mode ---
-  // gapMs (straight key) is the silence before this press; for two keys it is worked out from press times.
-  function addElement(el, fromStraight, gapMs) {
+  // ---------- send-mode decoder ----------
+  // Keying feeds one decoder, like a receiver on the other end. Elements collect into a character until
+  // the line goes quiet for LETTER_GAP units; that silence ends the character, which is decoded and only
+  // then compared with the expected letter. So "." for V comes out as E as soon as the gap passes, and
+  // two letters keyed without a gap decode as whatever they make together.
+  const sendUnit = fromStraight => set.sendUnitMs || (fromStraight ? unitMs(set.keyWpm) : 200);
+  function clearCharTimer() { clearTimeout(S.charTimer); S.charTimer = 0; }
+  function armCharTimer(ms) {
+    clearCharTimer();
+    const word = S.word, pos = S.pos;
+    S.charTimer = setTimeout(() => { if (S.word === word && S.pos === pos) endChar(); }, ms);
+  }
+
+  function addElement(el, fromStraight) {
     if (set.mode !== 'send' || S.lock || !S.current) return;
-    let gapU = null;
+    const now = performance.now(), u = sendUnit(fromStraight), elU = el === '.' ? 1 : 3;
     if (!fromStraight) {
       blip(el);
-      const now = performance.now(), u = set.sendUnitMs || 200;
-      if (S.lastPress) {
-        // Two keys: time between presses is the previous element plus the gap after it.
-        const prevU = S.lastPress.el === '.' ? 1 : 3;
-        gapU = (now - S.lastPress.t) / u - prevU;
-        if (S.input && gapU <= GAP_LONG) noteUnit((now - S.lastPress.t) / (prevU + 1));
-      }
+      // Two keys: time between presses inside a character is the previous element plus one unit.
+      if (S.input && S.lastPress) noteUnit((now - S.lastPress.t) / ((S.lastPress.el === '.' ? 1 : 3) + 1));
       S.lastPress = { t: now, el };
-    } else if (gapMs != null) {
-      gapU = gapMs / (set.sendUnitMs || unitMs(set.keyWpm));
-    }
-    if (set.checkTiming && gapU !== null) {
-      if (S.input && gapU > GAP_LONG) return onTimingBreak(el);
-      if (!S.input && fromStraight && S.pos > 0 && gapU < GAP_SHORT) return onTimingMerge(el);
+      // The element "sounds" for elU units, then the character ends after LETTER_GAP units of quiet.
+      armCharTimer((elU + LETTER_GAP) * u);
+    } else {
+      // Straight key: the key is already up, so the quiet starts now.
+      armCharTimer(LETTER_GAP * u);
     }
     S.input += el;
-    const target = MORSE[S.current];
-    if (!target.startsWith(S.input)) return onSendWrong();
-    if (S.input === target) return onSendRight();
+    S.lastInputAt = Date.now();
     armHintTimer();
     renderPattern();
   }
+
+  // The line went quiet: decode what was keyed and check it against the expected letter.
+  function endChar() {
+    S.charTimer = 0;
+    if (set.mode !== 'send' || S.lock || !S.input || !S.current) return;
+    const keyed = S.input, target = MORSE[S.current];
+    if (keyed === target) return onSendRight();
+    const sent = DECODE[keyed];
+    let why = '';
+    if (target.startsWith(keyed)) why = ' The gap after it was long enough to end the letter, so keep the parts of ' + S.current + ' closer together.';
+    else if (keyed.startsWith(target)) why = ' It ran on past ' + S.current + ', so leave a longer gap after the last element.';
+    onSendWrong('<span class="no">You sent ' + (sent ? '<b>' + sent + '</b>' : 'something that isn\'t a character') + '</span> (' + pillsText(keyed) + '). ' +
+      S.current + ' is <b>' + pillsText(target) + '</b>.' + why);
+  }
+
   function onSendRight() {
     clearHintTimer();
     const ch = S.current, target = MORSE[ch];
     if (S.phase === 'ask') {
-      const elapsed = Date.now() - S.shownAt;
+      // Speed is judged up to the last element, not including the gap the decoder waits for.
+      const elapsed = (S.lastInputAt || Date.now()) - S.shownAt;
       const fast = 1100 + 350 * target.length;
       let q = elapsed < fast ? 3 : elapsed < fast * 2.5 ? 2 : 1;
       if (S.usedHint) q = 1;
@@ -903,46 +920,32 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     }
     $('#card').classList.remove('bad');
     if (S.pos < S.word.length - 1 && !/New:/.test($('#feedback').innerHTML)) setFeedback('');
-    // move straight on, so fast keying never loses an element
     letterDone();
-  }
-  // Paused too long inside the letter: on air, the letter would have ended there.
-  function onTimingBreak(el) {
-    const sent = DECODE[S.input], ch = S.current;
-    const msg = '<span class="no">Too long a pause.</span> After <b>' + pillsText(S.input) + '</b> the gap ended the letter' +
-      (sent ? ', so it reads as <b>' + sent + '</b>' : '') + '. Keep ' + ch + ' together: <b>' + pillsText(MORSE[ch]) + '</b>.';
-    S.input += el;
-    onSendWrong(msg);
-  }
-  // Straight key, no gap after the previous letter: the two letters run together.
-  function onTimingMerge(el) {
-    const prev = S.word[S.pos - 1];
-    const merged = prev && prev !== ' ' ? DECODE[MORSE[prev] + el] : null;
-    const msg = '<span class="no">No gap between letters.</span> This ran into the ' + (prev && prev !== ' ' ? '<b>' + prev + '</b>' : 'previous letter') +
-      (merged ? ' and reads as <b>' + merged + '</b>' : '') + '. Leave a pause of about three dits, then key ' + S.current + '.';
-    S.input = el;
-    onSendWrong(msg);
   }
   function onSendWrong(msg) {
     clearHintTimer();
-    const ch = S.current, target = MORSE[ch], pos = S.pos;
+    clearCharTimer();
+    const ch = S.current, pos = S.pos;
     if (S.phase === 'ask') { gradeOnce(ch, 0); S.phase = 'retry'; }
     S.hintShown = true;
-    S.badIdx = S.input.length - 1;
+    S.badAll = true;
     flash('bad');
-    setFeedback(msg || '<span class="no">Not quite.</span> ' + ch + ' is <b>' + pillsText(target) + '</b>. Key it again.');
+    setFeedback(msg);
     S.lock = true;
     render();
     setTimeout(() => {
       if (S.current !== ch || S.pos !== pos) return;
-      S.input = ''; S.badIdx = -1; S.lock = false;
-      S.lastPress = null; S.lastRelease = 0;  // the retry starts with a clean slate
+      S.input = ''; S.badAll = false; S.lock = false;
+      S.lastPress = null;
       renderPattern();
-    }, 650);
+    }, 900);
   }
   function backspace() {
     if (set.mode !== 'send' || S.lock || !S.input) return;
     S.input = S.input.slice(0, -1);
+    // Give a moment to key the replacement before the decoder closes the character.
+    if (S.input) armCharTimer((3 + LETTER_GAP) * sendUnit(set.input === 'straight'));
+    else clearCharTimer();
     renderPattern();
   }
   function showHint(auto) {
@@ -955,22 +958,20 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   // straight key
   function keyDown() {
     if (set.mode !== 'send' || set.input !== 'straight' || S.lock || S.pressing) return;
+    clearCharTimer();  // the line isn't quiet while the key is down
     S.pressing = performance.now();
-    S.pressGap = S.lastRelease ? S.pressing - S.lastRelease : null;
     sidetoneOn();
     $('#btn-key').classList.add('pressed');
   }
   function keyUp() {
     if (!S.pressing) return;
-    const now = performance.now(), dur = now - S.pressing;
+    const dur = performance.now() - S.pressing;
     S.pressing = 0;
-    S.lastRelease = now;
     sidetoneOff();
-   
     $('#btn-key').classList.remove('pressed');
     const el = dur < 2 * unitMs(set.keyWpm) ? '.' : '-';
     noteUnit(el === '.' ? dur : dur / 3);
-    addElement(el, true, S.pressGap);
+    addElement(el, true);
   }
 
   // --- receive mode ---
@@ -1024,7 +1025,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
         const sym = typed || target[i];
         const cls = ['el', sym === '.' ? 'dit' : 'dah'];
         if (!typed) cls.push('ghost');
-        else if (i === S.badIdx) cls.push('bad');
+        else if (i === S.badIdx || S.badAll) cls.push('bad');
         h += '<span class="' + cls.join(' ') + '"></span>';
       }
       if (!n) h = '<span class="placeholder">Key ' + S.current + '</span>';
@@ -1087,7 +1088,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     if (set.mode === 'send' && set.input === 'two') kh.innerHTML = '<span>Dit <kbd>J</kbd> <kbd>.</kbd> <kbd>←</kbd></span><span>Dah <kbd>K</kbd> <kbd>-</kbd> <kbd>→</kbd></span><span>Undo <kbd>⌫</kbd></span><span>Hint <kbd>H</kbd></span>';
     else if (set.mode === 'send') kh.innerHTML = '<span>Hold <kbd>Space</kbd>. Presses shorter than ' + Math.round(2 * unitMs(set.keyWpm)) + ' ms are dits.</span><span>Hint <kbd>H</kbd></span>';
     if (set.mode === 'send' && set.sendUnitMs) kh.innerHTML += '<span>Your speed: about ' + sendWpm() + ' WPM</span>';
-    if (set.mode === 'send' && set.checkTiming) kh.innerHTML += '<span>A pause inside a letter ends it</span>';
+    if (set.mode === 'send') kh.innerHTML += '<span>A pause of about three dits ends a letter</span>';
     else {
       kh.innerHTML = '<span>Type the letters you hear' + (S.sentence ? ', spaces are skipped' : '') + '</span><span>Replay <kbd>Space</kbd></span>';
       const p = pool(), d = deck(), shaky = p.filter(x => d[x] && !grasped(x));
@@ -1262,7 +1263,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     $('#keywpm-field').style.opacity = set.input === 'straight' ? 1 : .5;
     $('#playwpm').value = set.playWpm; $('#playwpm-out').textContent = set.playWpm + ' WPM';
     $('#freq').value = set.freq; $('#freq-out').textContent = set.freq + ' Hz';
-    $('#timing').checked = set.checkTiming;
     $('#vol').value = set.volume; $('#vol-out').textContent = Math.round(set.volume * 100) + '%';
   }
   ['#in-two', '#in-straight'].forEach(id => $(id).addEventListener('change', e => { set.input = e.target.value; save(); syncSettings(); render(); }));
@@ -1271,7 +1271,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   $('#playwpm').addEventListener('change', () => playPattern('-.-.', set.playWpm));
   $('#freq').addEventListener('input', e => { set.freq = +e.target.value; save(); syncSettings(); });
   $('#freq').addEventListener('change', () => playPattern('..'));
-  $('#timing').addEventListener('change', e => { set.checkTiming = e.target.checked; save(); render(); });
   $('#vol').addEventListener('input', e => { set.volume = +e.target.value; if (master) master.gain.value = set.volume; save(); syncSettings(); });
   $('#vol').addEventListener('change', () => playPattern('.'));
   $('#reset').addEventListener('click', () => { $('#reset').hidden = true; $('#reset-yes').hidden = false; $('#reset-no').hidden = false; });
