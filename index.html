@@ -587,17 +587,31 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     g.setValueAtTime(g.value, t);
     g.linearRampToValueAtTime(to, t + len);
   }
+  // Each press sounds its own tone. Tones get shorter when you key faster than the Receive speed,
+  // and a press that lands while the last tone is still ringing cuts it and leaves a short gap,
+  // so fast keying never smears into one long tone.
+  let toneEnd = 0;
+  const KEY_GAP = 0.025;
   function blip(el) {
     if (scheduled.length) stopPlayback();
-    const u = unitMs(set.playWpm) / 1000;
+    const wpm = set.sendUnitMs ? Math.max(set.playWpm, sendWpm()) : set.playWpm;
+    const u = 1.2 / wpm;
     const dur = el === '.' ? u : 3 * u;
     const a = keyVoice();
-    if (a) {
-      const t = a.currentTime;
-      keyRamp(0.8, t, 0.003);
-      keyGain.gain.setValueAtTime(0.8, t + dur - 0.004);
-      keyGain.gain.linearRampToValueAtTime(0, t + dur);
+    if (!a) return;
+    const g = keyGain.gain;
+    let t = a.currentTime;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    if (t < toneEnd) {
+      g.linearRampToValueAtTime(0, t + 0.003);
+      t += KEY_GAP;
+      g.setValueAtTime(0, t);
     }
+    g.linearRampToValueAtTime(0.8, t + 0.003);
+    g.setValueAtTime(0.8, t + dur - 0.004);
+    g.linearRampToValueAtTime(0, t + dur);
+    toneEnd = t + dur;
   }
   function sidetoneOn() {
     if (scheduled.length) stopPlayback();
