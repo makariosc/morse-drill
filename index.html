@@ -186,7 +186,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     </div>
     <label class="field" id="keywpm-field"><span>Straight key speed <output id="keywpm-out"></output></span>
       <input type="range" id="keywpm" min="5" max="30" step="1"></label>
-    <label class="field"><span>Playback speed <output id="playwpm-out"></output></span>
+    <label class="field"><span>Receive speed <output id="playwpm-out"></output></span>
       <input type="range" id="playwpm" min="5" max="35" step="1"></label>
     <label class="field"><span>Tone <output id="freq-out"></output></span>
       <input type="range" id="freq" min="400" max="1000" step="10"></label>
@@ -486,7 +486,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   const unitMs = wpm => 1200 / wpm;
 
   // ---------- session state ----------
-  const S = { numbers: false, word: '', pos: 0, graded: new Set(), recent: [], recentSent: [], sentence: false, group: false, current: null, input: '', phase: 'ask', hintShown: false, usedHint: false, shownAt: 0, lock: false, last: null, streak: 0, pressing: 0, hintTimer: 0, revealed: false, badIdx: -1 };
+  const S = { lastPress: null, numbers: false, word: '', pos: 0, graded: new Set(), recent: [], recentSent: [], sentence: false, group: false, current: null, input: '', phase: 'ask', hintShown: false, usedHint: false, shownAt: 0, lock: false, last: null, streak: 0, pressing: 0, hintTimer: 0, revealed: false, badIdx: -1 };
 
   // ---------- audio ----------
   let ac = null, master = null, sidetone = null, scheduled = [];
@@ -527,11 +527,20 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     scheduled.forEach(o => { try { o.stop(); } catch (e) {} });
     scheduled = [];
   }
+  // Send mode plays back at the user's own keying speed, measured from their presses (a smoothed unit length in ms).
+  function noteUnit(sample) {
+    if (!(sample > 20 && sample < 400)) return;  // outside 3-60 WPM is a pause or a slip, not keying
+    set.sendUnitMs = set.sendUnitMs ? set.sendUnitMs * 0.8 + sample * 0.2 : sample;
+    save();
+  }
+  const sendWpm = () => Math.round(Math.min(35, Math.max(5, 1200 / set.sendUnitMs)));
+  const playbackWpm = () => set.mode === 'send' && set.sendUnitMs ? sendWpm() : set.playWpm;
+
   // Plays a pattern; returns its length in ms (0 if audio unavailable).
-  function playPattern(pattern) {
+  function playPattern(pattern, wpm = playbackWpm()) {
     stopPlayback();
     const a = audio();
-    const u = 1.2 / set.playWpm;
+    const u = 1.2 / wpm;
     let off = 0.06, total = 0;
     for (const ch of pattern) {
       const dur = ch === '.' ? u : 3 * u;
@@ -542,10 +551,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     return a ? total : 0;
   }
   // Plays a whole word: three units between letters, at the playback speed.
-  function playWord(word) {
+  function playWord(word, wpm = playbackWpm()) {
     stopPlayback();
     const a = audio();
-    const u = 1.2 / set.playWpm;
+    const u = 1.2 / wpm;
     let off = 0.06;
     for (const c of word) {
       if (c === ' ') { off += 4 * u; continue; }  // 3 after the letter + 4 = 7-unit word gap
@@ -833,7 +842,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   // --- send mode ---
   function addElement(el, fromStraight) {
     if (set.mode !== 'send' || S.lock || !S.current) return;
-    if (!fromStraight) blip(el);
+    if (!fromStraight) {
+      blip(el);
+      // Two keys: the gap between presses inside a letter is the element plus one unit of space.
+      const now = performance.now();
+      if (S.input && S.lastPress) noteUnit((now - S.lastPress.t) / ((S.lastPress.el === '.' ? 1 : 3) + 1));
+      S.lastPress = { t: now, el };
+    }
     S.input += el;
     const target = MORSE[S.current];
     if (!target.startsWith(S.input)) return onSendWrong();
@@ -898,7 +913,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     sidetoneOff();
    
     $('#btn-key').classList.remove('pressed');
-    addElement(dur < 2 * unitMs(set.keyWpm) ? '.' : '-', true);
+    const el = dur < 2 * unitMs(set.keyWpm) ? '.' : '-';
+    noteUnit(el === '.' ? dur : dur / 3);
+    addElement(el, true);
   }
 
   // --- receive mode ---
@@ -1014,6 +1031,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     const kh = $('#keyhelp');
     if (set.mode === 'send' && set.input === 'two') kh.innerHTML = '<span>Dit <kbd>J</kbd> <kbd>.</kbd> <kbd>←</kbd></span><span>Dah <kbd>K</kbd> <kbd>-</kbd> <kbd>→</kbd></span><span>Undo <kbd>⌫</kbd></span><span>Hint <kbd>H</kbd></span>';
     else if (set.mode === 'send') kh.innerHTML = '<span>Hold <kbd>Space</kbd>. Presses shorter than ' + Math.round(2 * unitMs(set.keyWpm)) + ' ms are dits.</span><span>Hint <kbd>H</kbd></span>';
+    if (set.mode === 'send' && set.sendUnitMs) kh.innerHTML += '<span>Your speed: about ' + sendWpm() + ' WPM</span>';
     else {
       kh.innerHTML = '<span>Type the letters you hear' + (S.sentence ? ', spaces are skipped' : '') + '</span><span>Replay <kbd>Space</kbd></span>';
       const p = pool(), d = deck(), shaky = p.filter(x => d[x] && !grasped(x));
@@ -1193,7 +1211,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   ['#in-two', '#in-straight'].forEach(id => $(id).addEventListener('change', e => { set.input = e.target.value; save(); syncSettings(); render(); }));
   $('#keywpm').addEventListener('input', e => { set.keyWpm = +e.target.value; save(); syncSettings(); render(); });
   $('#playwpm').addEventListener('input', e => { set.playWpm = +e.target.value; save(); syncSettings(); });
-  $('#playwpm').addEventListener('change', () => playPattern('-.-.'));
+  $('#playwpm').addEventListener('change', () => playPattern('-.-.', set.playWpm));
   $('#freq').addEventListener('input', e => { set.freq = +e.target.value; save(); syncSettings(); });
   $('#freq').addEventListener('change', () => playPattern('..'));
   $('#vol').addEventListener('input', e => { set.volume = +e.target.value; if (master) master.gain.value = set.volume; save(); syncSettings(); });
