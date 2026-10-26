@@ -1010,6 +1010,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     if (S.pos < S.word.length - 1 && !/New:/.test($('#feedback').innerHTML)) setFeedback('');
     letterDone();
   }
+  // How long input is ignored after a wrong letter: long enough to see the red, short enough not to get in the way.
+  // The explanation stays on screen until the letter is keyed right.
+  const WRONG_PAUSE = 300;
   function onSendWrong(msg) {
     clearHintTimer();
     clearCharTimer();
@@ -1026,7 +1029,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
       S.input = ''; S.badAll = false; S.lock = false;
       S.lastPress = null; S.trace = [];
       renderPattern();
-    }, 900);
+    }, WRONG_PAUSE);
   }
   function backspace() {
     if (set.mode !== 'send' || S.lock || !S.input) return;
