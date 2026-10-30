@@ -261,7 +261,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     <div class="tiles" id="tiles"></div>
   </section>
 
-  <p class="foot">You start with E, A and T and build words from them. In Receive, a new character only unlocks once every unlocked one is solid: at least 85% right over its recent answers, with the last three right and quick. Numbers works the same way, starting with 5, 0 and 1. Once all 26 letters are unlocked, Sentences gives you everyday sentences, a few pangrams and some radio-contact phrases (plus sentences with numbers once all ten digits are unlocked), chosen to lean on the letters you find hardest. A new letter unlocks once the ones you are learning have settled. Each letter is scheduled on its own: it comes back after a gap that grows every time you get it right quickly, and shrinks to a few seconds when you miss it, so you spend your time on the letters you don't know yet. Timing follows the PARIS standard: a dit is one unit, a dah three, with one unit between elements. At 20 WPM a unit is 60 ms. Progress is saved in this browser.</p>
+  <p class="foot">You start with E, A and T and build words from them. A new character only unlocks once every unlocked one is at 90% accuracy over its last 10 answers (at least 5). Numbers works the same way, starting with 5, 0 and 1. Once all 26 letters are unlocked, Sentences gives you everyday sentences, a few pangrams and some radio-contact phrases (plus sentences with numbers once all ten digits are unlocked), chosen to lean on the letters you find hardest. A new letter unlocks once the ones you are learning have settled. Each letter is scheduled on its own: it comes back after a gap that grows every time you get it right quickly, and shrinks to a few seconds when you miss it, so you spend your time on the letters you don't know yet. Timing follows the PARIS standard: a dit is one unit, a dah three, with one unit between elements. At 20 WPM a unit is 60 ms. Progress is saved in this browser.</p>
 </div>
 
 <script>
@@ -477,10 +477,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   ];
   const STORE = 'morse-drill-v2';
   const LEARN_S = 120;        // a card counts as "learning" until its gap reaches 2 minutes
-  const SETTLE_STREAK = 2;    // ...or until it is answered correctly this many times in a row without a hint
-  const MAX_LEARNING = 3;
-  // Receive mode is stricter: every unlocked character must be "grasped" before a new one appears.
-  const GRASP_MIN = 5, GRASP_ACC = 0.85, GRASP_LAST = 3;     // at most this many learning cards before a new letter appears
+  // A new character unlocks only when every unlocked one is at GRASP_ACC accuracy over its last GRASP_WINDOW answers.
+  const GRASP_MIN = 5, GRASP_ACC = 0.9, GRASP_WINDOW = 10;
   const SOLID_S = 86400;      // a day or more counts as long-term
   const MAX_S = 60 * 86400;
   const DEFAULTS = { mode: 'send', input: 'two', keyWpm: 12, playWpm: 20, effWpm: 20, freq: 620, volume: 0.5, gapTolerance: 1.25, showCodes: false, practice: 'words' };
@@ -670,12 +668,11 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   document.addEventListener('keydown', warmAudio, { capture: true, once: true });
 
   // ---------- scheduler ----------
-  // Recent answers score 1 (good or fast), 0.5 (slow) or 0 (miss); the last 8 are kept.
+  // Recent answers score 1 (right) or 0 (wrong, or right only with a hint); the last GRASP_WINDOW are kept.
+  const accuracy = c => { const h = ((deck()[c] && deck()[c].hist) || []).slice(-GRASP_WINDOW); return h.length ? h.reduce((a, b) => a + b, 0) / h.length : 0; };
   function grasped(c) {
     const h = (deck()[c] && deck()[c].hist) || [];
-    if (h.length < GRASP_MIN) return false;
-    const acc = h.reduce((a, b) => a + b, 0) / h.length;
-    return acc >= GRASP_ACC && h.slice(-GRASP_LAST).every(x => x === 1);
+    return h.length >= GRASP_MIN && accuracy(c) >= GRASP_ACC;
   }
   function newCard() { return { interval: 0, due: Date.now(), reps: 0, lapses: 0, last: 0 }; }
   function pickNext() {
@@ -686,10 +683,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     if (S.forceNew && d[S.forceNew]) { const f = S.forceNew; S.forceNew = null; return f; }
     const firstDue = notLast(due)[0];
     if (firstDue) return firstDue;
-    const learning = intro.filter(c => d[c].interval < LEARN_S && (d[c].streak || 0) < SETTLE_STREAK).length;
     const next = p.find(c => !d[c]);
-    const ready = set.mode === 'recv' ? intro.every(grasped) : learning < MAX_LEARNING;
-    if (next && ready) { d[next] = newCard(); return next; }
+    if (next && intro.every(grasped)) { d[next] = newCard(); return next; }
     if (due[0] && intro.length === 1) return due[0];
     const soon = notLast(intro).sort((a, b) => d[a].due - d[b].due);
     if (soon[0]) return soon[0];
@@ -697,8 +692,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     if (next) { d[next] = newCard(); return next; }
     return p[0];
   }
-  // q: 0 miss, 1 hard (slow or hinted), 2 good, 3 fast
-  function grade(ch, q) {
+  // q: 0 miss, 1 hard (slow or hinted), 2 good, 3 fast. hinted: the pattern was shown, so it doesn't count toward accuracy.
+  function grade(ch, q, hinted) {
     const card = deck()[ch], now = Date.now(), st = dayStats();
     st.reviews++;
     if (q === 0) {
@@ -719,7 +714,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
         card.interval = Math.min(MAX_S, card.interval * (1 + (mult - 1) * frac));
       }
     }
-    card.hist = (card.hist || []).concat(q >= 2 ? 1 : q === 1 ? 0.5 : 0).slice(-8);
+    card.hist = (card.hist || []).concat(q > 0 && !hinted ? 1 : 0).slice(-GRASP_WINDOW);
     card.reps++;
     card.last = now;
     card.due = now + card.interval * 1000;
@@ -862,10 +857,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   }
 
   // Grades a letter the first time it is answered within the word; repeats in the same word don't count twice.
-  function gradeOnce(ch, q) {
+  function gradeOnce(ch, q, hinted) {
     if (S.graded.has(ch)) return;
     S.graded.add(ch);
-    grade(ch, q);
+    grade(ch, q, hinted);
   }
 
   function letterDone() {
@@ -902,7 +897,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   // the line goes quiet for LETTER_GAP units; that silence ends the character, which is decoded and only
   // then compared with the expected letter. So "." for V comes out as E as soon as the gap passes, and
   // two letters keyed without a gap decode as whatever they make together.
-  const sendUnit = fromStraight => set.sendUnitMs || (fromStraight ? unitMs(set.keyWpm) : 200);
+  const sendUnit = fromStraight => set.sendUnitMs || (fromStraight ? unitMs(set.keyWpm) : 150);
   function clearCharTimer() { clearTimeout(S.charTimer); S.charTimer = 0; }
   function armCharTimer(ms) {
     clearCharTimer();
@@ -957,7 +952,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   function charGapMs(el, straight) {
     const u = sendUnit(straight), tol = set.gapTolerance || 1.25;
     if (straight) return LETTER_GAP * u * tol;
-    const morse = (elUnits(el) + LETTER_GAP) * u;
+    // A two-key press is a moment, not a held tone, so a dah doesn't buy extra time over a dit.
+    const morse = (1 + LETTER_GAP) * u;
     const rhythm = set.tapMs ? set.tapMs + 3 * (set.tapDev || set.tapMs * 0.25) : 0;
     return Math.max(morse, rhythm, TAP_FLOOR) * tol;
   }
@@ -1032,7 +1028,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
       const fast = 1100 + 350 * target.length;
       let q = elapsed < fast ? 3 : elapsed < fast * 2.5 ? 2 : 1;
       if (S.usedHint) q = 1;
-      gradeOnce(ch, q);
+      // A first-time letter shows its outline by design; that one is a lesson, not a hint.
+      gradeOnce(ch, q, S.usedHint);
     }
     $('#card').classList.remove('bad');
     if (S.pos < S.word.length - 1 && !/New:/.test($('#feedback').innerHTML)) setFeedback('');
@@ -1217,11 +1214,14 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     if (set.mode === 'send') kh.innerHTML += '<span>A pause of about three dits ends a letter</span>';
     else {
       kh.innerHTML = '<span>Type the letters you hear' + (S.sentence ? ', spaces are skipped' : '') + '</span><span>Replay <kbd>Space</kbd></span><span>Letter speed <kbd>[</kbd> <kbd>]</kbd></span><span>Gaps <kbd>-</kbd> <kbd>=</kbd></span>';
+    }
+    {
       const p = pool(), d = deck(), shaky = p.filter(x => d[x] && !grasped(x));
       if (set.practice !== 'sentences' && p.some(x => !d[x])) {
+        const what = set.practice === 'numbers' ? 'digit' : 'letter';
         kh.innerHTML += '<span>' + (shaky.length
-          ? 'Next ' + (set.practice === 'numbers' ? 'digit' : 'letter') + ' unlocks when these are solid: <b>' + shaky.join(' ') + '</b>'
-          : 'Everything is solid. A new ' + (set.practice === 'numbers' ? 'digit' : 'letter') + ' is coming up.') + '</span>';
+          ? 'Next ' + what + ' unlocks at 90% on: ' + shaky.map(x => '<b>' + x + '</b> ' + Math.round(accuracy(x) * 100) + '%').join(', ')
+          : 'All at 90%. A new ' + what + ' is coming up.') + '</span>';
       }
     }
 
