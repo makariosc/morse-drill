@@ -261,7 +261,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     <div class="tiles" id="tiles"></div>
   </section>
 
-  <p class="foot">You start with E, A and T and build words from them. A new character only unlocks once every unlocked one is at 90% accuracy over its last 10 answers (at least 5). Numbers works the same way, starting with 5, 0 and 1. Once all 26 letters are unlocked, Sentences gives you everyday sentences, a few pangrams and some radio-contact phrases (plus sentences with numbers once all ten digits are unlocked), chosen to lean on the letters you find hardest. A new letter unlocks once the ones you are learning have settled. Each letter is scheduled on its own: it comes back after a gap that grows every time you get it right quickly, and shrinks to a few seconds when you miss it, so you spend your time on the letters you don't know yet. Timing follows the PARIS standard: a dit is one unit, a dah three, with one unit between elements. At 20 WPM a unit is 60 ms. Progress is saved in this browser.</p>
+  <p class="foot">You start with E, A and T and build words from them. A new character only unlocks once every unlocked one is at 90% accuracy over its last 10 answers (at least 5). In Receive, none of each letter's last 5 answers may have needed the word played again. Numbers works the same way, starting with 5, 0 and 1. Once all 26 letters are unlocked, Sentences gives you everyday sentences, a few pangrams and some radio-contact phrases (plus sentences with numbers once all ten digits are unlocked), chosen to lean on the letters you find hardest. A new letter unlocks once the ones you are learning have settled. Each letter is scheduled on its own: it comes back after a gap that grows every time you get it right quickly, and shrinks to a few seconds when you miss it, so you spend your time on the letters you don't know yet. Timing follows the PARIS standard: a dit is one unit, a dah three, with one unit between elements. At 20 WPM a unit is 60 ms. Progress is saved in this browser.</p>
 </div>
 
 <script>
@@ -668,11 +668,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   document.addEventListener('keydown', warmAudio, { capture: true, once: true });
 
   // ---------- scheduler ----------
-  // Recent answers score 1 (right) or 0 (wrong, or right only with a hint); the last GRASP_WINDOW are kept.
+  // Recent answers score 1 (right) or 0 (wrong, or right only with a hint or a replay); the last GRASP_WINDOW are kept.
   const accuracy = c => { const h = ((deck()[c] && deck()[c].hist) || []).slice(-GRASP_WINDOW); return h.length ? h.reduce((a, b) => a + b, 0) / h.length : 0; };
+  // Receive: whether any of the letter's last GRASP_MIN answers needed the word played again.
+  const neededReplay = c => (((deck()[c] && deck()[c].rp) || []).slice(-GRASP_MIN)).some(Boolean);
   function grasped(c) {
     const h = (deck()[c] && deck()[c].hist) || [];
-    return h.length >= GRASP_MIN && accuracy(c) >= GRASP_ACC;
+    return h.length >= GRASP_MIN && accuracy(c) >= GRASP_ACC && !neededReplay(c);
   }
   function newCard() { return { interval: 0, due: Date.now(), reps: 0, lapses: 0, last: 0 }; }
   function pickNext() {
@@ -693,7 +695,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     return p[0];
   }
   // q: 0 miss, 1 hard (slow or hinted), 2 good, 3 fast. hinted: the pattern was shown, so it doesn't count toward accuracy.
-  function grade(ch, q, hinted) {
+  function grade(ch, q, hinted, replayed) {
     const card = deck()[ch], now = Date.now(), st = dayStats();
     st.reviews++;
     if (q === 0) {
@@ -714,7 +716,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
         card.interval = Math.min(MAX_S, card.interval * (1 + (mult - 1) * frac));
       }
     }
-    card.hist = (card.hist || []).concat(q > 0 && !hinted ? 1 : 0).slice(-GRASP_WINDOW);
+    card.hist = (card.hist || []).concat(q > 0 && !hinted && !replayed ? 1 : 0).slice(-GRASP_WINDOW);
+    card.rp = (card.rp || []).concat(replayed ? 1 : 0).slice(-GRASP_WINDOW);
     card.reps++;
     card.last = now;
     card.due = now + card.interval * 1000;
@@ -825,6 +828,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     }
     const { word, group, sentence, numbers } = set.practice === 'sentences' ? pickSentence() : set.practice === 'numbers' ? pickNumber() : pickWord();
     S.lastPress = null; S.prevChar = null;
+    S.heard = false; S.replayFrom = Infinity;  // letters from replayFrom on were answered after a replay
     S.word = word; S.group = group; S.sentence = !!sentence; S.numbers = !!numbers; S.pos = 0; S.graded = new Set();
     S.lock = false;
     startLetter();
@@ -857,10 +861,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   }
 
   // Grades a letter the first time it is answered within the word; repeats in the same word don't count twice.
-  function gradeOnce(ch, q, hinted) {
+  function gradeOnce(ch, q, hinted, replayed) {
     if (S.graded.has(ch)) return;
     S.graded.add(ch);
-    grade(ch, q, hinted);
+    grade(ch, q, hinted, replayed);
   }
 
   function letterDone() {
@@ -1108,7 +1112,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
       return;
     }
     if (S.word !== word) return;
+    // Hearing it again counts against every letter not yet answered; the first play doesn't.
+    if (S.heard && S.pos < S.word.length) S.replayFrom = Math.min(S.replayFrom, S.pos);
     const ms = playWord(S.word);
+    if (ms) S.heard = true;
     if (S.phase === 'ask' && S.pos === 0 && (S.shownAt === Infinity || S.shownAt > Date.now())) S.shownAt = Date.now() + ms;
     if (!ms) setFeedback('Audio is unavailable in this browser.');
     else if (/Press/.test($('#feedback').innerHTML)) setFeedback('Listen, then type the word.');
@@ -1120,7 +1127,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     if (ch === target) {
       if (S.phase === 'ask') {
         const t = Date.now() - S.shownAt;
-        gradeOnce(target, t < 1500 ? 3 : t < 3500 ? 2 : 1);
+        const replayed = S.pos >= S.replayFrom;
+        gradeOnce(target, replayed ? 1 : t < 1500 ? 3 : t < 3500 ? 2 : 1, false, replayed);
       }
       $('#card').classList.remove('bad');
       if (S.phase === 'retry') setFeedback('');
@@ -1220,7 +1228,11 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
       if (set.practice !== 'sentences' && p.some(x => !d[x])) {
         const what = set.practice === 'numbers' ? 'digit' : 'letter';
         kh.innerHTML += '<span>' + (shaky.length
-          ? 'Next ' + what + ' unlocks at 90% on: ' + shaky.map(x => '<b>' + x + '</b> ' + Math.round(accuracy(x) * 100) + '%').join(', ')
+          ? 'Next ' + what + ' unlocks at 90%' + (set.mode === 'recv' ? ' with no replays' : '') + ' on: ' +
+            shaky.map(x => {
+              const n = ((d[x].hist) || []).length;
+              return '<b>' + x + '</b> ' + (n < GRASP_MIN ? n + '/' + GRASP_MIN + ' answers' : Math.round(accuracy(x) * 100) + '%' + (set.mode === 'recv' && neededReplay(x) ? ' (replayed)' : ''));
+            }).join(', ')
           : 'All at 90%. A new ' + what + ' is coming up.') + '</span>';
       }
     }
