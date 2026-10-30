@@ -114,6 +114,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
 .keybtn .lbl { font-family: var(--f-mono); font-size: .8rem; color: var(--muted); }
 .straight { min-height: 140px; }
 .recv-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; }
+.stepper { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); padding: 4px 10px; }
+.stepper .k { font-family: var(--f-mono); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.stepper button { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); font-weight: 700; font-size: 1.1rem; line-height: 1; }
+.stepper output { min-width: 2ch; text-align: center; font-family: var(--f-display); font-weight: 700; font-size: 1.4rem; font-variant-numeric: tabular-nums; }
 .replay { border: 1px solid var(--line-strong); border-bottom-width: 3px; background: var(--surface); border-radius: 12px; padding: 10px 18px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; }
 .letters { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 8px; }
 .letters button { min-height: 52px; border: 1px solid var(--line-strong); border-bottom-width: 3px; border-radius: 10px; background: var(--surface); font-family: var(--f-display); font-weight: 900; font-size: 1.6rem; touch-action: manipulation; }
@@ -188,8 +192,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
       <input type="range" id="gaptol" min="1" max="2" step="0.05"></label>
     <label class="field" id="keywpm-field"><span>Starting speed <output id="keywpm-out"></output></span>
       <input type="range" id="keywpm" min="5" max="30" step="1"></label>
-    <label class="field"><span>Receive speed <output id="playwpm-out"></output></span>
+    <label class="field"><span>Receive letter speed <output id="playwpm-out"></output></span>
       <input type="range" id="playwpm" min="5" max="35" step="1"></label>
+    <label class="field"><span>Receive overall speed <output id="effwpm-out"></output></span>
+      <input type="range" id="effwpm" min="5" max="35" step="1"></label>
     <label class="field"><span>Tone <output id="freq-out"></output></span>
       <input type="range" id="freq" min="400" max="1000" step="10"></label>
     <label class="field"><span>Volume <output id="vol-out"></output></span>
@@ -216,7 +222,19 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
       <button class="keybtn straight" id="btn-key" aria-label="Morse key: hold for dah, tap for dit"><span style="display:flex;gap:10px"><span class="el dit"></span><span class="el dah"></span></span><span class="lbl">Tap for dit, hold for dah · Space</span></button>
     </div>
     <div class="pad" id="pad-recv" hidden>
-      <div class="recv-row"><button class="replay" id="btn-replay"><span aria-hidden="true">▶</span> Play again</button></div>
+      <div class="recv-row">
+        <button class="replay" id="btn-replay"><span aria-hidden="true">▶</span> Play again</button>
+        <div class="stepper" role="group" aria-label="Letter speed">
+          <span class="k">Letters</span>
+          <button id="rs-letter-down" aria-label="Slower letters">−</button><output id="rs-letter">20</output><button id="rs-letter-up" aria-label="Faster letters">+</button>
+          <span class="k">WPM</span>
+        </div>
+        <div class="stepper" role="group" aria-label="Overall speed">
+          <span class="k">Overall</span>
+          <button id="rs-overall-down" aria-label="Wider gaps">−</button><output id="rs-overall">20</output><button id="rs-overall-up" aria-label="Narrower gaps">+</button>
+          <span class="k">WPM</span>
+        </div>
+      </div>
       <div class="letters" id="letters"></div>
     </div>
     <p class="keyhelp" id="keyhelp"></p>
@@ -465,7 +483,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   const GRASP_MIN = 5, GRASP_ACC = 0.85, GRASP_LAST = 3;     // at most this many learning cards before a new letter appears
   const SOLID_S = 86400;      // a day or more counts as long-term
   const MAX_S = 60 * 86400;
-  const DEFAULTS = { mode: 'send', input: 'two', keyWpm: 12, playWpm: 20, freq: 620, volume: 0.5, gapTolerance: 1.25, showCodes: false, practice: 'words' };
+  const DEFAULTS = { mode: 'send', input: 'two', keyWpm: 12, playWpm: 20, effWpm: 20, freq: 620, volume: 0.5, gapTolerance: 1.25, showCodes: false, practice: 'words' };
 
   const $ = s => document.querySelector(s);
 
@@ -482,6 +500,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   }
   let DB = load();
   const set = DB.settings;
+  if (!(set.effWpm <= set.playWpm)) set.effWpm = set.playWpm;  // older saves had no overall speed
   function save() { try { localStorage.setItem(STORE, JSON.stringify(DB)); } catch (e) {} }
 
   const pool = () => set.practice === 'numbers' ? DIGITS : LETTERS;
@@ -563,19 +582,28 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     return a ? total : 0;
   }
   // Plays a whole word: three units between letters, at the playback speed.
-  function playWord(word, wpm = playbackWpm()) {
+  // Farnsworth timing (ARRL): letters are sent at the character speed c, and the extra time needed to
+  // bring the overall pace down to s is spread over the gaps, 3/19 of it per letter gap and 7/19 per word gap.
+  function gapsFor(c, s) {
+    const u = 1.2 / c;
+    if (!(s < c)) return { letter: 3 * u, word: 7 * u };
+    const ta = (60 * c - 37.2 * s) / (s * c);
+    return { letter: 3 * ta / 19, word: 7 * ta / 19 };
+  }
+  // Receive mode uses Farnsworth spacing; Send mode plays back at your own speed with standard spacing.
+  function playWord(word, wpm = playbackWpm(), overall = set.mode === 'recv' ? set.effWpm : wpm) {
     stopPlayback();
     const a = audio();
-    const u = 1.2 / wpm;
+    const u = 1.2 / wpm, gap = gapsFor(wpm, Math.min(overall || wpm, wpm));
     let off = 0.06;
     for (const c of word) {
-      if (c === ' ') { off += 4 * u; continue; }  // 3 after the letter + 4 = 7-unit word gap
+      if (c === ' ') { off += gap.word - gap.letter; continue; }  // a letter gap was already added
       for (const ch of MORSE[c]) {
         const dur = ch === '.' ? u : 3 * u;
         if (a) scheduled.push(tone(a.currentTime + off, dur));
         off += dur + u;
       }
-      off += 2 * u;
+      off += gap.letter - u;  // the element gap above already counted one unit
     }
     return a ? off * 1000 : 0;
   }
@@ -1188,7 +1216,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     if (set.mode === 'send' && set.sendUnitMs) kh.innerHTML += '<span>Your speed: about ' + sendWpm() + ' WPM</span>';
     if (set.mode === 'send') kh.innerHTML += '<span>A pause of about three dits ends a letter</span>';
     else {
-      kh.innerHTML = '<span>Type the letters you hear' + (S.sentence ? ', spaces are skipped' : '') + '</span><span>Replay <kbd>Space</kbd></span>';
+      kh.innerHTML = '<span>Type the letters you hear' + (S.sentence ? ', spaces are skipped' : '') + '</span><span>Replay <kbd>Space</kbd></span><span>Letter speed <kbd>[</kbd> <kbd>]</kbd></span><span>Gaps <kbd>-</kbd> <kbd>=</kbd></span>';
       const p = pool(), d = deck(), shaky = p.filter(x => d[x] && !grasped(x));
       if (set.practice !== 'sentences' && p.some(x => !d[x])) {
         kh.innerHTML += '<span>' + (shaky.length
@@ -1262,6 +1290,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
       if (e.code === 'Space') e.preventDefault();
     } else {
       if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) replay(); return; }
+      if (k === '[' || k === ']') { e.preventDefault(); setRecvSpeed(set.playWpm + (k === ']' ? 1 : -1), set.effWpm === set.playWpm ? set.playWpm + (k === ']' ? 1 : -1) : set.effWpm); return; }
+      if (k === '-' || k === '=' || k === '+') { e.preventDefault(); setRecvSpeed(k === '-' ? set.playWpm : Math.max(set.playWpm, set.effWpm + 1), set.effWpm + (k === '-' ? -1 : 1)); return; }
       if (k.length === 1 && /[a-z0-9]/i.test(k)) { e.preventDefault(); if (!e.repeat) answer(k.toUpperCase()); }
     }
   });
@@ -1286,6 +1316,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   tapButton('#btn-dit', () => addElement('.'));
   tapButton('#btn-dah', () => addElement('-'));
   tapButton('#btn-replay', replay);
+  tapButton('#rs-letter-down', () => setRecvSpeed(set.playWpm - 1, set.effWpm === set.playWpm ? set.playWpm - 1 : set.effWpm));
+  tapButton('#rs-letter-up', () => setRecvSpeed(set.playWpm + 1, set.effWpm === set.playWpm ? set.playWpm + 1 : set.effWpm));
+  tapButton('#rs-overall-down', () => setRecvSpeed(set.playWpm, set.effWpm - 1));
+  tapButton('#rs-overall-up', () => setRecvSpeed(Math.max(set.playWpm, set.effWpm + 1), set.effWpm + 1));
 
   const keyBtn = $('#btn-key');
   keyBtn.addEventListener('pointerdown', e => { if (e.button !== 0) return; e.preventDefault(); try { keyBtn.setPointerCapture(e.pointerId); } catch (x) {} keyDown(); });
@@ -1359,6 +1393,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     $('#in-straight').checked = set.input === 'straight';
     $('#keywpm').value = set.keyWpm; $('#keywpm-out').textContent = set.keyWpm + ' WPM';
     $('#playwpm').value = set.playWpm; $('#playwpm-out').textContent = set.playWpm + ' WPM';
+    $('#effwpm').value = set.effWpm;
+    $('#effwpm-out').textContent = set.effWpm < set.playWpm ? set.effWpm + ' WPM, wider gaps' : 'same as letters';
+    $('#rs-letter').textContent = set.playWpm;
+    $('#rs-overall').textContent = set.effWpm;
     $('#freq').value = set.freq; $('#freq-out').textContent = set.freq + ' Hz';
     $('#gaptol').value = set.gapTolerance; $('#gaptol-out').textContent = set.gapTolerance <= 1 ? 'strict' : '+' + Math.round((set.gapTolerance - 1) * 100) + '%';
     $('#vol').value = set.volume; $('#vol-out').textContent = Math.round(set.volume * 100) + '%';
@@ -1370,7 +1408,15 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     set.sendUnitMs = unitMs(set.keyWpm); set.ditMs = 0; set.dahMs = 0;
     save(); syncSettings(); render();
   });
-  $('#playwpm').addEventListener('input', e => { set.playWpm = +e.target.value; save(); syncSettings(); });
+  // Overall speed can't be faster than the letters themselves.
+  function setRecvSpeed(letter, overall) {
+    set.playWpm = Math.min(35, Math.max(5, letter));
+    set.effWpm = Math.min(set.playWpm, Math.max(5, overall));
+    save(); syncSettings();
+  }
+  $('#playwpm').addEventListener('input', e => setRecvSpeed(+e.target.value, set.effWpm === set.playWpm ? +e.target.value : set.effWpm));
+  $('#effwpm').addEventListener('input', e => setRecvSpeed(Math.max(set.playWpm, +e.target.value), +e.target.value));
+  $('#effwpm').addEventListener('change', () => { if (set.mode === 'recv' && S.word) replay(); });
   $('#playwpm').addEventListener('change', () => playPattern('-.-.', set.playWpm));
   $('#freq').addEventListener('input', e => { set.freq = +e.target.value; save(); syncSettings(); });
   $('#freq').addEventListener('change', () => playPattern('..'));
