@@ -676,6 +676,18 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     const h = (deck()[c] && deck()[c].hist) || [];
     return h.length >= GRASP_MIN && accuracy(c) >= GRASP_ACC && !neededReplay(c);
   }
+  // Characters keeping the next one locked: unlocked but not yet at the bar. Empty when nothing is left to unlock.
+  const HOLDING_SHARE = 0.75;
+  function holdingBack() {
+    const d = deck(), p = pool();
+    if (!p.some(c => !d[c])) return [];
+    return p.filter(c => d[c] && !grasped(c));
+  }
+  // How far a character is from the bar: missing answers, accuracy short of 90%, and a recent replay.
+  function need(c) {
+    const n = ((deck()[c] && deck()[c].hist) || []).length;
+    return Math.max(0, GRASP_MIN - n) * 0.3 + Math.max(0, GRASP_ACC - accuracy(c)) * 5 + (neededReplay(c) ? 1 : 0);
+  }
   function newCard() { return { interval: 0, due: Date.now(), reps: 0, lapses: 0, last: 0 }; }
   function pickNext() {
     const now = Date.now(), d = deck(), p = pool();
@@ -683,6 +695,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     const due = intro.filter(c => d[c].due <= now).sort((a, b) => d[a].due - d[b].due);
     const notLast = arr => arr.filter(c => c !== S.last);
     if (S.forceNew && d[S.forceNew]) { const f = S.forceNew; S.forceNew = null; return f; }
+    // While a new character is waiting, most targets are the ones holding it back, neediest first.
+    // The rest stay ordinary reviews so solid letters still come round.
+    const holding = notLast(holdingBack());
+    if (holding.length && Math.random() < HOLDING_SHARE) {
+      const ranked = holding.sort((a, b) => need(b) - need(a));
+      return ranked[Math.random() < 0.7 || ranked.length === 1 ? 0 : 1];
+    }
     const firstDue = notLast(due)[0];
     if (firstDue) return firstDue;
     const next = p.find(c => !d[c]);
@@ -732,13 +751,23 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     const target = pickNext();
     const known = new Set(pool().filter(c => d[c]));
     const isDue = c => d[c] && d[c].reps > 0 && d[c].due <= now;
+    const holding = new Set(holdingBack());
     const maxLen = known.size < 8 ? 5 : 7;
-    const cands = WORDS.filter(w => w.length <= maxLen && w.includes(target) && !S.recent.includes(w) && [...w].every(c => known.has(c)));
+    // Drilling a character that is holding back the next one: short words where it makes up more of what
+    // you hear, extra credit for saying it twice, and words may come back sooner.
+    const drilling = holding.has(target);
+    const recent = drilling ? S.recent.slice(0, 4) : S.recent;
+    const cands = WORDS.filter(w => w.length <= maxLen && w.includes(target) && !recent.includes(w) && [...w].every(c => known.has(c)));
     if (cands.length) {
       const scored = cands.map(w => {
         const distinct = new Set(w);
         let score = Math.random() * 1.5 + (w.length >= 3 ? 1 : 0);
-        distinct.forEach(c => { if (c !== target && isDue(c)) score += 2; if (d[c].reps === 0 && c !== target) score -= 3; });
+        if (drilling) score += 3 * ([...w].filter(c => c === target).length / w.length) + (w.split(target).length - 2) * 1.5;
+        distinct.forEach(c => {
+          if (c !== target && isDue(c)) score += 2;
+          if (c !== target && holding.has(c)) score += 2;
+          if (d[c].reps === 0 && c !== target) score -= 3;
+        });
         return { w, score };
       }).sort((a, b) => b.score - a.score);
       const pick = scored[Math.floor(Math.random() * Math.min(4, scored.length))].w;
@@ -765,7 +794,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
     else {
       const len = known.length < 5 ? 3 : 3 + Math.floor(Math.random() * 3);
       const at = Math.floor(Math.random() * len);
-      const bag = known.flatMap(c => c !== target && isDue(c) ? [c, c, c] : [c]);
+      const holding = new Set(holdingBack());
+      const bag = known.flatMap(c => c !== target && (isDue(c) || holding.has(c)) ? [c, c, c] : [c]);
       out = '';
       for (let i = 0; i < len; i++) {
         if (i === at) { out += target; continue; }
@@ -861,8 +891,15 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
   }
 
   // Grades a letter the first time it is answered within the word; repeats in the same word don't count twice.
+  // The schedule moves once per character per word; a repeat in the same word still counts toward accuracy.
   function gradeOnce(ch, q, hinted, replayed) {
-    if (S.graded.has(ch)) return;
+    if (S.graded.has(ch)) {
+      const card = deck()[ch];
+      card.hist = (card.hist || []).concat(q > 0 && !hinted && !replayed ? 1 : 0).slice(-GRASP_WINDOW);
+      card.rp = (card.rp || []).concat(replayed ? 1 : 0).slice(-GRASP_WINDOW);
+      save();
+      return;
+    }
     S.graded.add(ch);
     grade(ch, q, hinted, replayed);
   }
