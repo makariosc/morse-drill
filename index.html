@@ -1112,8 +1112,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--lamp); }
       return;
     }
     if (S.word !== word) return;
-    // Hearing it again counts against every letter not yet answered; the first play doesn't.
-    if (S.heard && S.pos < S.word.length) S.replayFrom = Math.min(S.replayFrom, S.pos);
+    // Hearing it again counts against every letter not yet answered. The first play doesn't, and neither
+    // does a replay while putting right a wrong letter: that letter is already marked wrong.
+    if (S.heard && S.phase !== 'retry' && S.pos < S.word.length) S.replayFrom = Math.min(S.replayFrom, S.pos);
     const ms = playWord(S.word);
     if (ms) S.heard = true;
     if (S.phase === 'ask' && S.pos === 0 && (S.shownAt === Infinity || S.shownAt > Date.now())) S.shownAt = Date.now() + ms;
